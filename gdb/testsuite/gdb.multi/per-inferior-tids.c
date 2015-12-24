@@ -18,9 +18,20 @@
 #include <unistd.h>
 #include <pthread.h>
 
+pthread_t child_thread[2];
+
 void *
-thread_function (void *arg)
+thread_function2 (void *arg)
 {
+  while (1)
+    sleep (1);
+}
+
+void *
+thread_function1 (void *arg)
+{
+  pthread_create (&child_thread[1], NULL, thread_function2, NULL);
+
   while (1)
     sleep (1);
 }
@@ -28,13 +39,14 @@ thread_function (void *arg)
 int
 main (void)
 {
-  pthread_t child_thread;
   int i;
 
   alarm (300);
 
-  pthread_create (&child_thread, NULL, thread_function, NULL);
-  pthread_join (child_thread, NULL);
+  pthread_create (&child_thread[0], NULL, thread_function1, NULL);
+
+  for (i = 0; i < 2; i++)
+    pthread_join (child_thread[i], NULL);
 
   return 0;
 }

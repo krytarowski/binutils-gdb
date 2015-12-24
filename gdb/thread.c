@@ -1126,8 +1126,8 @@ pc_in_thread_step_range (CORE_ADDR pc, struct thread_info *thread)
 }
 
 static int
-should_print_thread (const char *requested_threads, int global_ids,
-		     int pid, struct thread_info *thr)
+should_print_thread (const char *requested_threads, int default_inferior,
+		     int global_ids, int pid, struct thread_info *thr)
 {
   if (pid != -1 && ptid_get_pid (thr->ptid) != pid
       && requested_threads != NULL && *requested_threads != '\0')
@@ -1135,9 +1135,14 @@ should_print_thread (const char *requested_threads, int global_ids,
 
   if (requested_threads != NULL && *requested_threads != '\0')
     {
-      int id = global_ids ? thr->global_num : thr->per_inf_num;
+      int in_list;
 
-      if (number_is_in_list (requested_threads, id))
+      if (global_ids)
+	in_list = number_is_in_list (requested_threads, thr->global_num);
+      else
+	in_list = tid_is_in_list (requested_threads, default_inferior,
+				  thr->inf->num, thr->per_inf_num);
+      if (in_list)
 	{
 	  if (pid != -1 && ptid_get_pid (thr->ptid) != pid)
 	    error (_("Requested thread not found in requested process"));
@@ -1170,6 +1175,7 @@ print_thread_info_1 (struct ui_out *uiout, char *requested_threads,
   const char *extra_info, *name, *target_id;
   int current_thread = -1;
   struct inferior *inf;
+  int current_inf_num = current_inferior ()->num;
 
   update_thread_list ();
   current_ptid = inferior_ptid;
@@ -1188,7 +1194,8 @@ print_thread_info_1 (struct ui_out *uiout, char *requested_threads,
 
       for (tp = thread_list; tp; tp = tp->next)
 	{
-	  if (!should_print_thread (requested_threads, global_ids, pid, tp))
+	  if (!should_print_thread (requested_threads, current_inf_num,
+				    global_ids, pid, tp))
 	    continue;
 
 	  ++n_threads;
@@ -1235,7 +1242,8 @@ print_thread_info_1 (struct ui_out *uiout, char *requested_threads,
       if (ptid_equal (tp->ptid, current_ptid))
 	current_thread = tp->global_num;
 
-      if (!should_print_thread (requested_threads, global_ids, pid, tp))
+      if (!should_print_thread (requested_threads, current_inf_num,
+				global_ids, pid, tp))
 	continue;
 
       chain2 = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
@@ -1774,13 +1782,16 @@ print_thread_id (struct thread_info *thr)
   return s;
 }
 
+
+/* Implementation of the "thread apply" command.  */
+
 static void
 thread_apply_command (char *tidlist, int from_tty)
 {
   char *cmd;
   struct cleanup *old_chain;
   char *saved_cmd;
-  struct get_number_or_range_state state;
+  struct tid_range_parser parser;
 
   if (tidlist == NULL || *tidlist == '\000')
     error (_("Please specify a thread ID list"));
@@ -1795,33 +1806,44 @@ thread_apply_command (char *tidlist, int from_tty)
   saved_cmd = xstrdup (cmd);
   old_chain = make_cleanup (xfree, saved_cmd);
 
-  init_number_or_range (&state, tidlist);
-  while (!state.finished && state.string < cmd)
+  make_cleanup_restore_current_thread ();
+
+  tid_range_parser_init (&parser, tidlist, current_inferior ()->num);
+  while (!tid_range_parser_finished (&parser)
+	 && tid_range_parser_string (&parser) < cmd)
     {
-      struct thread_info *tp;
-      int start;
+      struct thread_info *tp = NULL;
+      struct inferior *inf;
+      int inf_num, thr_num;
 
-      start = get_number_or_range (&state);
-
-      make_cleanup_restore_current_thread ();
-
-      tp = find_thread_id (current_inferior (), start);
-
-      if (!tp)
-	warning (_("Unknown thread %d."), start);
-      else if (!thread_alive (tp))
-	warning (_("Thread %d has terminated."), start);
-      else
+      tid_range_parser_get_tid (&parser, &inf_num, &thr_num);
+      inf = find_inferior_id (inf_num);
+      if (inf != NULL)
+	tp = find_thread_id (inf, thr_num);
+      if (tp == NULL)
 	{
-	  switch_to_thread (tp->ptid);
-
-	  printf_filtered (_("\nThread %s (%s):\n"), print_thread_id (tp),
-			   target_pid_to_str (inferior_ptid));
-	  execute_command (cmd, from_tty);
-
-	  /* Restore exact command used previously.  */
-	  strcpy (cmd, saved_cmd);
+	  if (inferior_list->next != NULL || inferior_list->num != 1
+	      || tid_range_parser_qualified (&parser))
+	    warning (_("Unknown thread %d.%d"), inf_num, thr_num);
+	  else
+	    warning (_("Unknown thread %d"), thr_num);
+	  continue;
 	}
+
+      if (!thread_alive (tp))
+	{
+	  warning (_("Thread %s has terminated."), print_thread_id (tp));
+	  continue;
+	}
+
+      switch_to_thread (tp->ptid);
+
+      printf_filtered (_("\nThread %s (%s):\n"), print_thread_id (tp),
+		       target_pid_to_str (inferior_ptid));
+      execute_command (cmd, from_tty);
+
+      /* Restore exact command used previously.  */
+      strcpy (cmd, saved_cmd);
     }
 
   do_cleanups (old_chain);
@@ -2001,6 +2023,143 @@ parse_thread_id (const char *tidstr, const char **end)
     *end = p1;
 
   return tp;
+}
+
+/* See gdbthread.h.  */
+
+void
+tid_range_parser_init (struct tid_range_parser *parser, const char *tidlist,
+		       int default_inferior)
+{
+  parser->state = TID_RANGE_STATE_INFERIOR;
+  parser->string = tidlist;
+  parser->inf_num = 0;
+  parser->qualified = 0;
+  parser->default_inferior = default_inferior;
+}
+
+/* See gdbthread.h.  */
+
+int
+tid_range_parser_finished (struct tid_range_parser *parser)
+{
+  switch (parser->state)
+    {
+    case TID_RANGE_STATE_INFERIOR:
+      return *parser->string == '\0';
+    case TID_RANGE_STATE_THREAD_RANGE:
+      return parser->range_parser.finished;
+    }
+
+  gdb_assert_not_reached (_("unhandled state"));
+}
+
+/* See gdbthread.h.  */
+
+const char *
+tid_range_parser_string (struct tid_range_parser *parser)
+{
+  switch (parser->state)
+    {
+    case TID_RANGE_STATE_INFERIOR:
+      return parser->string;
+    case TID_RANGE_STATE_THREAD_RANGE:
+      return parser->range_parser.string;
+    }
+
+  gdb_assert_not_reached (_("unhandled state"));
+}
+
+/* See gdbthread.h.  */
+
+int
+tid_range_parser_qualified (struct tid_range_parser *parser)
+{
+  return parser->qualified;
+}
+
+/* See gdbthread.h.  */
+
+void
+tid_range_parser_get_tid (struct tid_range_parser *parser, int *inf_num,
+			  int *thr_num)
+{
+  if (parser->state == TID_RANGE_STATE_INFERIOR)
+    {
+      const char *p;
+      const char *space;
+
+      space = skip_to_space (parser->string);
+
+      p = parser->string;
+      while (p < space && *p != '.')
+	p++;
+      if (p < space)
+	{
+	  const char *dot = p;
+
+	  /* Parse number to the left of the dot.  */
+	  p = parser->string;
+	  parser->inf_num = get_number_trailer (&p, '.');
+	  if (parser->inf_num == 0)
+	    error (_("Invalid thread ID: %s"), parser->string);
+
+	  parser->qualified = 1;
+	  p = dot + 1;
+
+	  if (isspace (*p))
+	    error (_("Invalid thread ID: %s"), parser->string);
+	}
+      else
+	{
+	  parser->inf_num = parser->default_inferior;
+	  parser->qualified = 0;
+	  p = parser->string;
+	}
+
+      init_number_or_range (&parser->range_parser, p);
+      parser->state = TID_RANGE_STATE_THREAD_RANGE;
+    }
+
+  *inf_num = parser->inf_num;
+  *thr_num = get_number_or_range (&parser->range_parser);
+  if (*thr_num == 0)
+    error (_("Invalid thread ID: %s"), parser->string);
+
+  /* If we successfully parsed a thread number or finished parsing a
+     thread range, switch back to assuming the next TID is
+     inferior-qualified.  */
+  if (parser->range_parser.end_ptr == NULL
+      || parser->range_parser.string == parser->range_parser.end_ptr)
+    {
+      parser->state = TID_RANGE_STATE_INFERIOR;
+      parser->string = parser->range_parser.string;
+    }
+}
+
+/* See gdbthread.h.  */
+
+int
+tid_is_in_list (const char *list, int default_inferior,
+		int inf_num, int thr_num)
+{
+  struct tid_range_parser parser;
+
+  if (list == NULL || *list == '\0')
+    return 1;
+
+  tid_range_parser_init (&parser, list, default_inferior);
+  while (!tid_range_parser_finished (&parser))
+    {
+      int tmp_inf, tmp_thr;
+
+      tid_range_parser_get_tid (&parser, &tmp_inf, &tmp_thr);
+      if (tmp_inf == 0 || tmp_thr == 0)
+	error (_("Invalid thread ID: %s"), parser.string);
+      if (tmp_inf == inf_num && tmp_thr == thr_num)
+	return 1;
+    }
+  return 0;
 }
 
 static int

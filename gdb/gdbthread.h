@@ -30,6 +30,7 @@ struct symtab;
 #include "btrace.h"
 #include "common/vec.h"
 #include "target/waitstatus.h"
+#include "cli/cli-utils.h"
 
 /* Frontend view of the thread state.  Possible extensions: stepping,
    finishing, until(ling),...  */
@@ -409,6 +410,96 @@ extern int valid_global_thread_id (int thread);
    thread ID.  Either a valid thread is returned, or an error is
    thrown.  */
 struct thread_info *parse_thread_id (const char *tidstr, const char **end);
+
+/* The possible states of the tid range parser's state machine.  */
+enum tid_range_state
+{
+  /* Parsing the inferior number.  */
+  TID_RANGE_STATE_INFERIOR,
+
+  /* Parsing the thread number or thread number range.  */
+  TID_RANGE_STATE_THREAD_RANGE,
+};
+
+/* An object of this type is passed to tid_range_parser_get_tid.  It
+   must be initialized by calling tid_range_parser_init.  This type is
+   defined here so that it can be stack-allocated, but all members
+   should be treated as opaque.  */
+struct tid_range_parser
+{
+  /* What sub-component are we expecting.  */
+  enum tid_range_state state;
+
+  /* The string being parsed.  When parsing has finished, this points
+     past the last parsed token.  */
+  const char *string;
+
+  /* The range parser state when we're parsing the thread number
+     sub-component.  */
+  struct get_number_or_range_state range_parser;
+
+  /* Last inferior number returned.  */
+  int inf_num;
+
+  /* True if the TID last parsed was explicitly inferior-qualified.
+     IOW, whether the spec specified an inferior number
+     explicitly.  */
+  int qualified;
+
+  /* The inferior number to assume if the TID is not qualified.  */
+  int default_inferior;
+};
+
+/* Initialize a tid_range_parser for use with
+   tid_range_parser_get_tid.  TIDLIST is the string to be parsed.
+   DEFAULT_INFERIOR is the inferior number to assume if a
+   non-qualified thread ID is found.  */
+extern void tid_range_parser_init (struct tid_range_parser *parser,
+				   const char *tidlist,
+				   int default_inferior);
+
+/* Parse a thread ID or a thread range list.
+
+   A range will be of the form
+   <inferior_num>.<thread_number1>-<thread_number1> and will represent
+   all the threads of inferior inferior_num with number between
+   thread_number1 and thread_number2, inclusive.  <inferior_num> can
+   also be omitted, as in <thread_number1>-<thread_number1>, in which
+   case GDB infers the inferior number from the current inferior.
+
+   While processing a thread ID range list, this function is called
+   iteratively; At each call it will return (in the INF_NUM and
+   THR_NUM output parameters) the next thread in the range.
+
+   At the beginning of parsing a thread range, the char pointer
+   PARSER->string will be advanced past <thread_number1> and left
+   pointing at the '-' token.  Subsequent calls will not advance the
+   pointer until the range is completed.  The call that completes the
+   range will advance the pointer past <thread_number2>.  */
+extern void tid_range_parser_get_tid (struct tid_range_parser *parser,
+				      int *inf_num, int *thr_num);
+
+/* Returns non-zero if parsing has completed.  */
+extern int tid_range_parser_finished (struct tid_range_parser *parser);
+
+/* Return the string being parsed.  When parsing has finished, this
+   points past the last parsed token.  */
+const char *tid_range_parser_string (struct tid_range_parser *parser);
+
+/* True if the TID last parsed was explicitly inferior-qualified.
+   IOW, whether the spec specified an inferior number explicitly.  */
+extern int tid_range_parser_qualified (struct tid_range_parser *parser);
+
+/* Accept a string-form list of thread IDs such as is accepted by
+   tid_range_parser_get_tid.  Return TRUE if the INF_NUM.THR.NUM
+   thread is in the list.  DEFAULT_INFERIOR is the inferior number to
+   assume if a non-qualified thread ID is found in the list.
+
+   By definition, an empty list includes all threads.  This is to be
+   interpreted as typing a command such as "info threads" with no
+   arguments.  */
+extern int tid_is_in_list (const char *list, int default_inferior,
+			   int inf_num, int thr_num);
 
 /* Search function to lookup a thread by 'pid'.  */
 extern struct thread_info *find_thread_ptid (ptid_t ptid);
