@@ -1,3 +1,7 @@
+2017-09-05  Kamil Rytarowski  <n54@gmx.com>
+
+	* opcode/nds32.h: Rename __BIT() to N32_BIT().
+
 2015-12-01  Alan Modra  <amodra@gmail.com>
 
 	* bout.h: Invoke aout N_* macros with pointer to
