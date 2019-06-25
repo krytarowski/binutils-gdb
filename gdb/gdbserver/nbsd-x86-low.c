@@ -21,7 +21,7 @@
 #include <signal.h>
 #include <limits.h>
 #include <inttypes.h>
-#include "linux-low.h"
+#include "netbsd-low.h"
 #include "i387-fp.h"
 #include "x86-low.h"
 #include "common/x86-xstate.h"
