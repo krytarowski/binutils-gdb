@@ -71,7 +71,6 @@ static const char *xmltarget_amd64_netbsd_no_xml = "@<target>\
 #endif
 
 #include <sys/reg.h>
-#include <sys/procfs.h>
 #include <sys/uio.h>
 
 /* Per-process arch-specific data we want to keep.  */
