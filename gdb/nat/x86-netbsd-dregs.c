@@ -21,9 +21,9 @@
 #include "nat/gdb_ptrace.h"
 #include <sys/user.h>
 #include "target/waitstatus.h"
-#include "nat/x86-linux.h"
+#include "nat/x86-netbsd.h"
 #include "nat/x86-dregs.h"
-#include "nat/x86-linux-dregs.h"
+#include "nat/x86-netbsd-dregs.h"
 
 /* Return the offset of REGNUM in the u_debugreg field of struct
    user.  */
@@ -38,7 +38,7 @@ u_debugreg_offset (int regnum)
 /* Get debug register REGNUM value from the LWP specified by PTID.  */
 
 static unsigned long
-x86_linux_dr_get (ptid_t ptid, int regnum)
+x86_netbsd_dr_get (ptid_t ptid, int regnum)
 {
   int tid;
   unsigned long value;
@@ -57,7 +57,7 @@ x86_linux_dr_get (ptid_t ptid, int regnum)
 /* Set debug register REGNUM to VALUE in the LWP specified by PTID.  */
 
 static void
-x86_linux_dr_set (ptid_t ptid, int regnum, unsigned long value)
+x86_netbsd_dr_set (ptid_t ptid, int regnum, unsigned long value)
 {
   int tid;
 
@@ -81,26 +81,26 @@ update_debug_registers_callback (struct lwp_info *lwp)
   lwp_set_debug_registers_changed (lwp, 1);
 
   if (!lwp_is_stopped (lwp))
-    linux_stop_lwp (lwp);
+    netbsd_stop_lwp (lwp);
 
   /* Continue the iteration.  */
   return 0;
 }
 
-/* See nat/x86-linux-dregs.h.  */
+/* See nat/x86-netbsd-dregs.h.  */
 
 CORE_ADDR
-x86_linux_dr_get_addr (int regnum)
+x86_netbsd_dr_get_addr (int regnum)
 {
   gdb_assert (DR_FIRSTADDR <= regnum && regnum <= DR_LASTADDR);
 
-  return x86_linux_dr_get (current_lwp_ptid (), regnum);
+  return x86_netbsd_dr_get (current_lwp_ptid (), regnum);
 }
 
-/* See nat/x86-linux-dregs.h.  */
+/* See nat/x86-netbsd-dregs.h.  */
 
 void
-x86_linux_dr_set_addr (int regnum, CORE_ADDR addr)
+x86_netbsd_dr_set_addr (int regnum, CORE_ADDR addr)
 {
   ptid_t pid_ptid = ptid_t (current_lwp_ptid ().pid ());
 
@@ -109,36 +109,36 @@ x86_linux_dr_set_addr (int regnum, CORE_ADDR addr)
   iterate_over_lwps (pid_ptid, update_debug_registers_callback);
 }
 
-/* See nat/x86-linux-dregs.h.  */
+/* See nat/x86-netbsd-dregs.h.  */
 
 unsigned long
-x86_linux_dr_get_control (void)
+x86_netbsd_dr_get_control (void)
 {
-  return x86_linux_dr_get (current_lwp_ptid (), DR_CONTROL);
+  return x86_netbsd_dr_get (current_lwp_ptid (), DR_CONTROL);
 }
 
-/* See nat/x86-linux-dregs.h.  */
+/* See nat/x86-netbsd-dregs.h.  */
 
 void
-x86_linux_dr_set_control (unsigned long control)
+x86_netbsd_dr_set_control (unsigned long control)
 {
   ptid_t pid_ptid = ptid_t (current_lwp_ptid ().pid ());
 
   iterate_over_lwps (pid_ptid, update_debug_registers_callback);
 }
 
-/* See nat/x86-linux-dregs.h.  */
+/* See nat/x86-netbsd-dregs.h.  */
 
 unsigned long
-x86_linux_dr_get_status (void)
+x86_netbsd_dr_get_status (void)
 {
-  return x86_linux_dr_get (current_lwp_ptid (), DR_STATUS);
+  return x86_netbsd_dr_get (current_lwp_ptid (), DR_STATUS);
 }
 
-/* See nat/x86-linux-dregs.h.  */
+/* See nat/x86-netbsd-dregs.h.  */
 
 void
-x86_linux_update_debug_registers (struct lwp_info *lwp)
+x86_netbsd_update_debug_registers (struct lwp_info *lwp)
 {
   ptid_t ptid = ptid_of_lwp (lwp);
   int clear_status = 0;
@@ -151,18 +151,18 @@ x86_linux_update_debug_registers (struct lwp_info *lwp)
 	= x86_debug_reg_state (ptid.pid ());
       int i;
 
-      /* Prior to Linux kernel 2.6.33 commit
+      /* Prior to netbsd kernel 2.6.33 commit
 	 72f674d203cd230426437cdcf7dd6f681dad8b0d, setting DR0-3 to
 	 a value that did not match what was enabled in DR_CONTROL
 	 resulted in EINVAL.  To avoid this we zero DR_CONTROL before
 	 writing address registers, only writing DR_CONTROL's actual
 	 value once all the addresses are in place.  */
-      x86_linux_dr_set (ptid, DR_CONTROL, 0);
+      x86_netbsd_dr_set (ptid, DR_CONTROL, 0);
 
       ALL_DEBUG_ADDRESS_REGISTERS (i)
 	if (state->dr_ref_count[i] > 0)
 	  {
-	    x86_linux_dr_set (ptid, i, state->dr_mirror[i]);
+	    x86_netbsd_dr_set (ptid, i, state->dr_mirror[i]);
 
 	    /* If we're setting a watchpoint, any change the inferior
 	       has made to its debug registers needs to be discarded
@@ -172,12 +172,12 @@ x86_linux_update_debug_registers (struct lwp_info *lwp)
 
       /* If DR_CONTROL is supposed to be zero then it's already set.  */
       if (state->dr_control_mirror != 0)
-	x86_linux_dr_set (ptid, DR_CONTROL, state->dr_control_mirror);
+	x86_netbsd_dr_set (ptid, DR_CONTROL, state->dr_control_mirror);
 
       lwp_set_debug_registers_changed (lwp, 0);
     }
 
   if (clear_status
       || lwp_stop_reason (lwp) == TARGET_STOPPED_BY_WATCHPOINT)
-    x86_linux_dr_set (ptid, DR_STATUS, 0);
+    x86_netbsd_dr_set (ptid, DR_STATUS, 0);
 }

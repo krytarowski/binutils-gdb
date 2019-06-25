@@ -17,37 +17,37 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef NAT_X86_LINUX_DREGS_H
-#define NAT_X86_LINUX_DREGS_H
+#ifndef NAT_X86_NETBSD_DREGS_H
+#define NAT_X86_NETBSD_DREGS_H
 
 /* Return the address stored in the current inferior's debug register
    REGNUM.  */
 
-extern CORE_ADDR x86_linux_dr_get_addr (int regnum);
+extern CORE_ADDR x86_netbsd_dr_get_addr (int regnum);
 
 /* Store ADDR in debug register REGNUM of all LWPs of the current
    inferior.  */
 
-extern void x86_linux_dr_set_addr (int regnum, CORE_ADDR addr);
+extern void x86_netbsd_dr_set_addr (int regnum, CORE_ADDR addr);
 
 /* Return the value stored in the current inferior's debug control
    register.  */
 
-extern unsigned long x86_linux_dr_get_control (void);
+extern unsigned long x86_netbsd_dr_get_control (void);
 
 /* Store CONTROL in the debug control registers of all LWPs of the
    current inferior.  */
 
-extern void x86_linux_dr_set_control (unsigned long control);
+extern void x86_netbsd_dr_set_control (unsigned long control);
 
 /* Return the value stored in the current inferior's debug status
    register.  */
 
-extern unsigned long x86_linux_dr_get_status (void);
+extern unsigned long x86_netbsd_dr_get_status (void);
 
 /* Update the thread's debug registers if the values in our local
    mirror have been changed.  */
 
-extern void x86_linux_update_debug_registers (struct lwp_info *lwp);
+extern void x86_netbsd_update_debug_registers (struct lwp_info *lwp);
 
-#endif /* NAT_X86_LINUX_DREGS_H */
+#endif /* NAT_X86_NETBSD_DREGS_H */
