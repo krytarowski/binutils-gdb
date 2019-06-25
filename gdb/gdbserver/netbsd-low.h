@@ -1,4 +1,4 @@
-/* Internal interfaces for the GNU/Linux specific target code for gdbserver.
+/* internal interfaces for the GNU/Linux specific target code for gdbserver.
    Copyright (C) 2002-2019 Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -16,10 +16,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef GDBSERVER_LINUX_LOW_H
-#define GDBSERVER_LINUX_LOW_H
+#ifndef GDBSERVER_NETBSD_LOW_H
+#define GDBSERVER_NETBSD_LOW_H
 
-#include "nat/linux-nat.h"
+#include "nat/netbsd-nat.h"
 #include "nat/gdb_thread_db.h"
 #include <signal.h>
 
@@ -27,13 +27,13 @@
 #include "gdb_proc_service.h"
 
 /* Included for ptrace type definitions.  */
-#include "nat/linux-ptrace.h"
+#include "nat/netbsd-ptrace.h"
 #include "target/waitstatus.h" /* For enum target_stop_reason.  */
 #include "tracepoint.h"
 
 #define PTRACE_XFER_TYPE long
 
-#ifdef HAVE_LINUX_REGSETS
+#ifdef HAVE_NETBSD_REGSETS
 typedef void (*regset_fill_func) (struct regcache *, void *);
 typedef void (*regset_store_func) (struct regcache *, const void *);
 enum regset_type {
@@ -108,7 +108,7 @@ struct regs_info
      transferred with regsets  .*/
   struct usrregs_info *usrregs;
 
-#ifdef HAVE_LINUX_REGSETS
+#ifdef HAVE_NETBSD_REGSETS
   /* Info used when accessing registers with regsets.  */
   struct regsets_info *regsets_info;
 #endif
@@ -129,7 +129,7 @@ struct process_info_private
 
 struct lwp_info;
 
-struct linux_target_ops
+struct netbsd_target_ops
 {
   /* Architecture-specific setup.  */
   void (*arch_setup) (void);
@@ -262,20 +262,20 @@ struct linux_target_ops
   int (*get_ipa_tdesc_idx) (void);
 };
 
-extern struct linux_target_ops the_low_target;
+extern struct netbsd_target_ops the_low_target;
 
 #define get_thread_lwp(thr) ((struct lwp_info *) (thread_target_data (thr)))
 #define get_lwp_thread(lwp) ((lwp)->thread)
 
 /* This struct is recorded in the target_data field of struct thread_info.
 
-   On linux ``all_threads'' is keyed by the LWP ID, which we use as the
+   On netbsd ``all_threads'' is keyed by the LWP ID, which we use as the
    GDB protocol representation of the thread ID.  Threads also have
    a "process ID" (poorly named) which is (presently) the same as the
    LWP ID.
 
    There is also ``all_processes'' is keyed by the "overall process ID",
-   which GNU/Linux calls tgid, "thread group ID".  */
+   which NetBSD calls tgid, "thread group ID".  */
 
 struct lwp_info
 {
@@ -363,7 +363,7 @@ struct lwp_info
   struct pending_signals *pending_signals;
 
   /* A link used when resuming.  It is initialized from the resume request,
-     and then processed and cleared in linux_resume_one_lwp.  */
+     and then processed and cleared in netbsd_resume_one_lwp.  */
   struct thread_resume *resume;
 
   /* Information bout this lwp's fast tracepoint collection status (is it
@@ -395,26 +395,26 @@ struct lwp_info
   struct arch_lwp_info *arch_private;
 };
 
-int linux_pid_exe_is_elf_64_file (int pid, unsigned int *machine);
+int netbsd_pid_exe_is_elf_64_file (int pid, unsigned int *machine);
 
 /* Attach to PTID.  Returns 0 on success, non-zero otherwise (an
    errno).  */
-int linux_attach_lwp (ptid_t ptid);
+int netbsd_attach_lwp (ptid_t ptid);
 
 struct lwp_info *find_lwp_pid (ptid_t ptid);
-/* For linux_stop_lwp see nat/linux-nat.h.  */
+/* For netbsd_stop_lwp see nat/netbsd-nat.h.  */
 
-#ifdef HAVE_LINUX_REGSETS
+#ifdef HAVE_NETBSD_REGSETS
 void initialize_regsets_info (struct regsets_info *regsets_info);
 #endif
 
 void initialize_low_arch (void);
 
-void linux_set_pc_32bit (struct regcache *regcache, CORE_ADDR pc);
-CORE_ADDR linux_get_pc_32bit (struct regcache *regcache);
+void netbsd_set_pc_32bit (struct regcache *regcache, CORE_ADDR pc);
+CORE_ADDR netbsd_get_pc_32bit (struct regcache *regcache);
 
-void linux_set_pc_64bit (struct regcache *regcache, CORE_ADDR pc);
-CORE_ADDR linux_get_pc_64bit (struct regcache *regcache);
+void netbsd_set_pc_64bit (struct regcache *regcache, CORE_ADDR pc);
+CORE_ADDR netbsd_get_pc_64bit (struct regcache *regcache);
 
 /* From thread-db.c  */
 int thread_db_init (void);
@@ -425,7 +425,7 @@ int thread_db_get_tls_address (struct thread_info *thread, CORE_ADDR offset,
 			       CORE_ADDR load_module, CORE_ADDR *address);
 int thread_db_look_up_one_symbol (const char *name, CORE_ADDR *addrp);
 
-/* Called from linux-low.c when a clone event is detected.  Upon entry,
+/* Called from netbsd-low.c when a clone event is detected.  Upon entry,
    both the clone and the parent should be stopped.  This function does
    whatever is required have the clone under thread_db's control.  */
 
@@ -440,17 +440,17 @@ extern int have_ptrace_getregset;
    *VALP and return 1.  If not found or if there is an error, return
    0.  */
 
-int linux_get_auxv (int wordsize, CORE_ADDR match,
+int netbsd_get_auxv (int wordsize, CORE_ADDR match,
 		    CORE_ADDR *valp);
 
 /* Fetch the AT_HWCAP entry from the auxv vector, where entries are length
    WORDSIZE.  If no entry was found, return zero.  */
 
-CORE_ADDR linux_get_hwcap (int wordsize);
+CORE_ADDR netbsd_get_hwcap (int wordsize);
 
 /* Fetch the AT_HWCAP2 entry from the auxv vector, where entries are length
    WORDSIZE.  If no entry was found, return zero.  */
 
-CORE_ADDR linux_get_hwcap2 (int wordsize);
+CORE_ADDR netbsd_get_hwcap2 (int wordsize);
 
-#endif /* GDBSERVER_LINUX_LOW_H */
+#endif /* GDBSERVER_NETBSD_LOW_H */
