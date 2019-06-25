@@ -28,11 +28,11 @@
 #include "nat/gdb_ptrace.h"
 
 #ifdef __x86_64__
-#include "nat/amd64-linux-siginfo.h"
+#include "nat/amd64-netbsd-siginfo.h"
 #endif
 
 #include "gdb_proc_service.h"
-/* Don't include elf/common.h if linux/elf.h got included by
+/* Don't include elf/common.h if netbsd/elf.h got included by
    gdb_proc_service.h.  */
 #ifndef ELFMAG0
 #include "elf/common.h"
@@ -42,15 +42,15 @@
 #include "tdesc.h"
 #include "tracepoint.h"
 #include "ax.h"
-#include "nat/linux-nat.h"
-#include "nat/x86-linux.h"
-#include "nat/x86-linux-dregs.h"
-#include "linux-x86-tdesc.h"
+#include "nat/netbsd-nat.h"
+#include "nat/x86-netbsd.h"
+#include "nat/x86-netbsd-dregs.h"
+#include "netbsd-x86-tdesc.h"
 
 #ifdef __x86_64__
-static struct target_desc *tdesc_amd64_linux_no_xml;
+static struct target_desc *tdesc_amd64_netbsd_no_xml;
 #endif
-static struct target_desc *tdesc_i386_linux_no_xml;
+static struct target_desc *tdesc_i386_netbsd_no_xml;
 
 
 static unsigned char jump_insn[] = { 0xe9, 0, 0, 0, 0 };
@@ -58,39 +58,21 @@ static unsigned char small_jump_insn[] = { 0x66, 0xe9, 0, 0 };
 
 /* Backward compatibility for gdb without XML support.  */
 
-static const char *xmltarget_i386_linux_no_xml = "@<target>\
+static const char *xmltarget_i386_netbsd_no_xml = "@<target>\
 <architecture>i386</architecture>\
-<osabi>GNU/Linux</osabi>\
+<osabi>NetBSD</osabi>\
 </target>";
 
 #ifdef __x86_64__
-static const char *xmltarget_amd64_linux_no_xml = "@<target>\
+static const char *xmltarget_amd64_netbsd_no_xml = "@<target>\
 <architecture>i386:x86-64</architecture>\
-<osabi>GNU/Linux</osabi>\
+<osabi>NetBSD</osabi>\
 </target>";
 #endif
 
 #include <sys/reg.h>
 #include <sys/procfs.h>
 #include <sys/uio.h>
-
-#ifndef PTRACE_GET_THREAD_AREA
-#define PTRACE_GET_THREAD_AREA 25
-#endif
-
-/* This definition comes from prctl.h, but some kernels may not have it.  */
-#ifndef PTRACE_ARCH_PRCTL
-#define PTRACE_ARCH_PRCTL      30
-#endif
-
-/* The following definitions come from prctl.h, but may be absent
-   for certain configurations.  */
-#ifndef ARCH_GET_FS
-#define ARCH_SET_GS 0x1001
-#define ARCH_SET_FS 0x1002
-#define ARCH_GET_FS 0x1003
-#define ARCH_GET_GS 0x1004
-#endif
 
 /* Per-process arch-specific data we want to keep.  */
 
@@ -343,7 +325,7 @@ x86_fill_gregset (struct regcache *regcache, void *buf)
   /* Sign extend EAX value to avoid potential syscall restart
      problems. 
 
-     See amd64_linux_collect_native_gregset() in gdb/amd64-linux-nat.c
+     See amd64_netbsd_collect_native_gregset() in gdb/amd64-netbsd-nat.c
      for a detailed explanation.  */
   if (register_size (regcache->tdesc, 0) == 4)
     {
@@ -525,11 +507,11 @@ x86_breakpoint_at (CORE_ADDR pc)
 /* Low-level function vector.  */
 struct x86_dr_low_type x86_dr_low =
   {
-    x86_linux_dr_set_control,
-    x86_linux_dr_set_addr,
-    x86_linux_dr_get_addr,
-    x86_linux_dr_get_status,
-    x86_linux_dr_get_control,
+    x86_netbsd_dr_set_control,
+    x86_netbsd_dr_set_addr,
+    x86_netbsd_dr_get_addr,
+    x86_netbsd_dr_get_status,
+    x86_netbsd_dr_get_control,
     sizeof (void *),
   };
 
@@ -622,7 +604,7 @@ x86_stopped_data_address (void)
 /* Called when a new process is created.  */
 
 static struct arch_process_info *
-x86_linux_new_process (void)
+x86_netbsd_new_process (void)
 {
   struct arch_process_info *info = XCNEW (struct arch_process_info);
 
@@ -634,35 +616,21 @@ x86_linux_new_process (void)
 /* Called when a process is being deleted.  */
 
 static void
-x86_linux_delete_process (struct arch_process_info *info)
+x86_netbsd_delete_process (struct arch_process_info *info)
 {
   xfree (info);
 }
 
-/* Target routine for linux_new_fork.  */
+/* Target routine for netbsd_new_fork.  */
 
 static void
-x86_linux_new_fork (struct process_info *parent, struct process_info *child)
+x86_netbsd_new_fork (struct process_info *parent, struct process_info *child)
 {
-  /* These are allocated by linux_add_process.  */
+  /* These are allocated by netbsd_add_process.  */
   gdb_assert (parent->priv != NULL
 	      && parent->priv->arch_private != NULL);
   gdb_assert (child->priv != NULL
 	      && child->priv->arch_private != NULL);
-
-  /* Linux kernel before 2.6.33 commit
-     72f674d203cd230426437cdcf7dd6f681dad8b0d
-     will inherit hardware debug registers from parent
-     on fork/vfork/clone.  Newer Linux kernels create such tasks with
-     zeroed debug registers.
-
-     GDB core assumes the child inherits the watchpoints/hw
-     breakpoints of the parent, and will remove them all from the
-     forked off process.  Copy the debug registers mirrors into the
-     new process so that all breakpoints and watchpoints can be
-     removed together.  The debug registers mirror will become zeroed
-     in the end before detaching the forked off process, thus making
-     this compatible with older Linux kernels too.  */
 
   *child->priv->arch_private = *parent->priv->arch_private;
 }
@@ -677,7 +645,7 @@ x86_debug_reg_state (pid_t pid)
   return &proc->priv->arch_private->debug_reg_state;
 }
 
-/* When GDBSERVER is built as a 64-bit application on linux, the
+/* When GDBSERVER is built as a 64-bit application on netbsd, the
    PTRACE_GETSIGINFO data is always presented in 64-bit layout.  Since
    debugging a 32-bit inferior with a 64-bit GDBSERVER should look the same
    as debugging it with a 32-bit GDBSERVER, we do the 32-bit <-> 64-bit
@@ -695,15 +663,15 @@ x86_siginfo_fixup (siginfo_t *ptrace, gdb_byte *inf, int direction)
 #ifdef __x86_64__
   unsigned int machine;
   int tid = lwpid_of (current_thread);
-  int is_elf64 = linux_pid_exe_is_elf_64_file (tid, &machine);
+  int is_elf64 = netbsd_pid_exe_is_elf_64_file (tid, &machine);
 
   /* Is the inferior 32-bit?  If so, then fixup the siginfo object.  */
   if (!is_64bit_tdesc ())
-      return amd64_linux_siginfo_fixup_common (ptrace, inf, direction,
+      return amd64_netbsd_siginfo_fixup_common (ptrace, inf, direction,
 					       FIXUP_32);
   /* No fixup for native x32 GDB.  */
   else if (!is_elf64 && sizeof (void *) == 8)
-    return amd64_linux_siginfo_fixup_common (ptrace, inf, direction,
+    return amd64_netbsd_siginfo_fixup_common (ptrace, inf, direction,
 					     FIXUP_X32);
 #endif
 
@@ -731,7 +699,7 @@ static int use_xml;
   together with the mask saved in the xstate_hdr_bytes to determine what
   states the processor/OS supports and what state, used or initialized,
   the process/thread is in.  */
-#define I386_LINUX_XSAVE_XCR0_OFFSET 464
+#define I386_NETBSD_XSAVE_XCR0_OFFSET 464
 
 /* Does the current host support the GETFPXREGS request?  The header
    file may or may not define it, and even if it is defined, the
@@ -744,10 +712,10 @@ int have_ptrace_getfpxregs =
 #endif
 ;
 
-/* Get Linux/x86 target description from running target.  */
+/* Get netbsd/x86 target description from running target.  */
 
 static const struct target_desc *
-x86_linux_read_description (void)
+x86_netbsd_read_description (void)
 {
   unsigned int machine;
   int is_elf64;
@@ -758,7 +726,7 @@ x86_linux_read_description (void)
 
   tid = lwpid_of (current_thread);
 
-  is_elf64 = linux_pid_exe_is_elf_64_file (tid, &machine);
+  is_elf64 = netbsd_pid_exe_is_elf_64_file (tid, &machine);
 
   if (sizeof (void *) == 4)
     {
@@ -779,7 +747,7 @@ x86_linux_read_description (void)
 	{
 	  have_ptrace_getfpxregs = 0;
 	  have_ptrace_getregset = 0;
-	  return i386_linux_read_description (X86_XSTATE_X87);
+	  return i386_netbsd_read_description (X86_XSTATE_X87);
 	}
       else
 	have_ptrace_getfpxregs = 1;
@@ -793,10 +761,10 @@ x86_linux_read_description (void)
       /* Don't use XML.  */
 #ifdef __x86_64__
       if (machine == EM_X86_64)
-	return tdesc_amd64_linux_no_xml;
+	return tdesc_amd64_netbsd_no_xml;
       else
 #endif
-	return tdesc_i386_linux_no_xml;
+	return tdesc_i386_netbsd_no_xml;
     }
 
   if (have_ptrace_getregset == -1)
@@ -816,7 +784,7 @@ x86_linux_read_description (void)
 	  have_ptrace_getregset = 1;
 
 	  /* Get XCR0 from XSAVE extended state.  */
-	  xcr0 = xstateregs[(I386_LINUX_XSAVE_XCR0_OFFSET
+	  xcr0 = xstateregs[(I386_NETBSD_XSAVE_XCR0_OFFSET
 			     / sizeof (uint64_t))];
 
 	  /* Use PTRACE_GETREGSET if it is available.  */
@@ -843,12 +811,12 @@ x86_linux_read_description (void)
 
       if (xcr0_features)
 	{
-	  tdesc = amd64_linux_read_description (xcr0 & X86_XSTATE_ALL_MASK,
+	  tdesc = amd64_netbsd_read_description (xcr0 & X86_XSTATE_ALL_MASK,
 						!is_elf64);
 	}
 
       if (tdesc == NULL)
-	tdesc = amd64_linux_read_description (X86_XSTATE_SSE_MASK, !is_elf64);
+	tdesc = amd64_netbsd_read_description (X86_XSTATE_SSE_MASK, !is_elf64);
       return tdesc;
 #endif
     }
@@ -857,10 +825,10 @@ x86_linux_read_description (void)
       const target_desc *tdesc = NULL;
 
       if (xcr0_features)
-	  tdesc = i386_linux_read_description (xcr0 & X86_XSTATE_ALL_MASK);
+	  tdesc = i386_netbsd_read_description (xcr0 & X86_XSTATE_ALL_MASK);
 
       if (tdesc == NULL)
-	tdesc = i386_linux_read_description (X86_XSTATE_SSE);
+	tdesc = i386_netbsd_read_description (X86_XSTATE_SSE);
 
       return tdesc;
     }
@@ -872,7 +840,7 @@ x86_linux_read_description (void)
    connected, and it may or not support xml target descriptions.  */
 
 static void
-x86_linux_update_xmltarget (void)
+x86_netbsd_update_xmltarget (void)
 {
   struct thread_info *saved_thread = current_thread;
 
@@ -897,7 +865,7 @@ x86_linux_update_xmltarget (void)
    PTRACE_GETREGSET.  */
 
 static void
-x86_linux_process_qsupported (char **features, int count)
+x86_netbsd_process_qsupported (char **features, int count)
 {
   int i;
 
@@ -926,7 +894,7 @@ x86_linux_process_qsupported (char **features, int count)
 	  free (copy);
 	}
     }
-  x86_linux_update_xmltarget ();
+  x86_netbsd_update_xmltarget ();
 }
 
 /* Common for x86/x86-64.  */
@@ -939,35 +907,35 @@ static struct regsets_info x86_regsets_info =
   };
 
 #ifdef __x86_64__
-static struct regs_info amd64_linux_regs_info =
+static struct regs_info amd64_netbsd_regs_info =
   {
     NULL, /* regset_bitmap */
     NULL, /* usrregs_info */
     &x86_regsets_info
   };
 #endif
-static struct usrregs_info i386_linux_usrregs_info =
+static struct usrregs_info i386_netbsd_usrregs_info =
   {
     I386_NUM_REGS,
     i386_regmap,
   };
 
-static struct regs_info i386_linux_regs_info =
+static struct regs_info i386_netbsd_regs_info =
   {
     NULL, /* regset_bitmap */
-    &i386_linux_usrregs_info,
+    &i386_netbsd_usrregs_info,
     &x86_regsets_info
   };
 
 const struct regs_info *
-x86_linux_regs_info (void)
+x86_netbsd_regs_info (void)
 {
 #ifdef __x86_64__
   if (is_64bit_tdesc ())
-    return &amd64_linux_regs_info;
+    return &amd64_netbsd_regs_info;
   else
 #endif
-    return &i386_linux_regs_info;
+    return &i386_netbsd_regs_info;
 }
 
 /* Initialize the target description for the architecture of the
@@ -976,7 +944,7 @@ x86_linux_regs_info (void)
 static void
 x86_arch_setup (void)
 {
-  current_process ()->tdesc = x86_linux_read_description ();
+  current_process ()->tdesc = x86_netbsd_read_description ();
 }
 
 /* Fill *SYSNO and *SYSRET with the syscall nr trapped and the syscall return
@@ -2811,7 +2779,7 @@ x86_emit_ops (void)
     return &i386_emit_ops;
 }
 
-/* Implementation of linux_target_ops method "sw_breakpoint_from_kind".  */
+/* Implementation of netbsd_target_ops method "sw_breakpoint_from_kind".  */
 
 static const gdb_byte *
 x86_sw_breakpoint_from_kind (int kind, int *size)
@@ -2826,7 +2794,7 @@ x86_supports_range_stepping (void)
   return 1;
 }
 
-/* Implementation of linux_target_ops method "supports_hardware_single_step".
+/* Implementation of netbsd_target_ops method "supports_hardware_single_step".
  */
 
 static int
@@ -2845,7 +2813,7 @@ x86_get_ipa_tdesc_idx (void)
   return amd64_get_ipa_tdesc_idx (tdesc);
 #endif
 
-  if (tdesc == tdesc_i386_linux_no_xml)
+  if (tdesc == tdesc_i386_netbsd_no_xml)
     return X86_TDESC_SSE;
 
   return i386_get_ipa_tdesc_idx (tdesc);
@@ -2854,10 +2822,10 @@ x86_get_ipa_tdesc_idx (void)
 /* This is initialized assuming an amd64 target.
    x86_arch_setup will correct it for i386 or amd64 targets.  */
 
-struct linux_target_ops the_low_target =
+struct netbsd_target_ops the_low_target =
 {
   x86_arch_setup,
-  x86_linux_regs_info,
+  x86_netbsd_regs_info,
   x86_cannot_fetch_register,
   x86_cannot_store_register,
   NULL, /* fetch_register */
@@ -2875,18 +2843,18 @@ struct linux_target_ops the_low_target =
   x86_stopped_data_address,
   /* collect_ptrace_register/supply_ptrace_register are not needed in the
      native i386 case (no registers smaller than an xfer unit), and are not
-     used in the biarch case (HAVE_LINUX_USRREGS is not defined).  */
+     used in the biarch case (HAVE_netbsd_USRREGS is not defined).  */
   NULL,
   NULL,
   /* need to fix up i386 siginfo if host is amd64 */
   x86_siginfo_fixup,
-  x86_linux_new_process,
-  x86_linux_delete_process,
-  x86_linux_new_thread,
-  x86_linux_delete_thread,
-  x86_linux_new_fork,
-  x86_linux_prepare_to_resume,
-  x86_linux_process_qsupported,
+  x86_netbsd_new_process,
+  x86_netbsd_delete_process,
+  x86_netbsd_new_thread,
+  x86_netbsd_delete_thread,
+  x86_netbsd_new_fork,
+  x86_netbsd_prepare_to_resume,
+  x86_netbsd_process_qsupported,
   x86_supports_tracepoints,
   x86_get_thread_area,
   x86_install_fast_tracepoint_jump_pad,
@@ -2902,23 +2870,23 @@ struct linux_target_ops the_low_target =
 void
 initialize_low_arch (void)
 {
-  /* Initialize the Linux target descriptions.  */
+  /* Initialize the netbsd target descriptions.  */
 #ifdef __x86_64__
-  tdesc_amd64_linux_no_xml = allocate_target_description ();
-  copy_target_description (tdesc_amd64_linux_no_xml,
-			   amd64_linux_read_description (X86_XSTATE_SSE_MASK,
+  tdesc_amd64_netbsd_no_xml = allocate_target_description ();
+  copy_target_description (tdesc_amd64_netbsd_no_xml,
+			   amd64_netbsd_read_description (X86_XSTATE_SSE_MASK,
 							 false));
-  tdesc_amd64_linux_no_xml->xmltarget = xmltarget_amd64_linux_no_xml;
+  tdesc_amd64_netbsd_no_xml->xmltarget = xmltarget_amd64_netbsd_no_xml;
 #endif
 
 #if GDB_SELF_TEST
   initialize_low_tdesc ();
 #endif
 
-  tdesc_i386_linux_no_xml = allocate_target_description ();
-  copy_target_description (tdesc_i386_linux_no_xml,
-			   i386_linux_read_description (X86_XSTATE_SSE_MASK));
-  tdesc_i386_linux_no_xml->xmltarget = xmltarget_i386_linux_no_xml;
+  tdesc_i386_netbsd_no_xml = allocate_target_description ();
+  copy_target_description (tdesc_i386_netbsd_no_xml,
+			   i386_netbsd_read_description (X86_XSTATE_SSE_MASK));
+  tdesc_i386_netbsd_no_xml->xmltarget = xmltarget_i386_netbsd_no_xml;
 
   initialize_regsets_info (&x86_regsets_info);
 }
