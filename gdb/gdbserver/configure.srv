@@ -27,6 +27,7 @@ srv_hostio_err_objs="hostio-errno.o"
 if $enable_unittests; then
    srv_i386_linux_regobj="i386-linux.o i386-avx-linux.o i386-avx-avx512-linux.o i386-avx-mpx-avx512-pku-linux.o i386-mpx-linux.o i386-avx-mpx-linux.o i386-mmx-linux.o linux-x86-tdesc-selftest.o"
    srv_amd64_linux_regobj="amd64-linux.o amd64-avx-linux.o amd64-avx-avx512-linux.o amd64-avx-mpx-avx512-pku-linux.o amd64-mpx-linux.o amd64-avx-mpx-linux.o x32-linux.o x32-avx-linux.o x32-avx-avx512-linux.o"
+   srv_amd64_netbsd_regobj="amd64-netbsd.o"
 else
    srv_i386_linux_regobj=""
    srv_amd64_linux_regobj=""
@@ -37,6 +38,10 @@ ipa_ppc_linux_regobj="powerpc-32l-ipa.o powerpc-altivec32l-ipa.o powerpc-cell32l
 # Linux object files.  This is so we don't have to repeat
 # these files over and over again.
 srv_linux_obj="linux-low.o linux-osdata.o linux-procfs.o linux-ptrace.o linux-waitpid.o linux-personality.o linux-namespaces.o fork-child.o fork-inferior.o"
+
+# NetBSD object files.  This is so we don't have to repeat
+# these files over and over again.
+srv_netbsd_obj="netbsd-low.o netbsd-osdata.o netbsd-ptrace.o netbsd-waitpid.o fork-child.o fork-inferior.o"
 
 # Input is taken from the "${target}" variable.
 
