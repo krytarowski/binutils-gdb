@@ -187,47 +187,6 @@ is_64bit_tdesc (void)
 #endif
 
 
-/* Called by libthread_db.  */
-
-ps_err_e
-ps_get_thread_area (struct ps_prochandle *ph,
-		    lwpid_t lwpid, int idx, void **base)
-{
-#ifdef __x86_64__
-  int use_64bit = is_64bit_tdesc ();
-
-  if (use_64bit)
-    {
-      switch (idx)
-	{
-	case FS:
-	  if (ptrace (PTRACE_ARCH_PRCTL, lwpid, base, ARCH_GET_FS) == 0)
-	    return PS_OK;
-	  break;
-	case GS:
-	  if (ptrace (PTRACE_ARCH_PRCTL, lwpid, base, ARCH_GET_GS) == 0)
-	    return PS_OK;
-	  break;
-	default:
-	  return PS_BADADDR;
-	}
-      return PS_ERR;
-    }
-#endif
-
-  {
-    unsigned int desc[4];
-
-    if (ptrace (PTRACE_GET_THREAD_AREA, lwpid,
-		(void *) (intptr_t) idx, (unsigned long) &desc) < 0)
-      return PS_ERR;
-
-    /* Ensure we properly extend the value to 64-bits for x86_64.  */
-    *base = (void *) (uintptr_t) desc[1];
-    return PS_OK;
-  }
-}
-
 /* Get the thread area address.  This is used to recognize which
    thread is which when tracing with the in-process agent library.  We
    don't read anything from the address, and treat it as opaque; it's
@@ -241,10 +200,10 @@ x86_get_thread_area (int lwpid, CORE_ADDR *addr)
 
   if (use_64bit)
     {
-      void *base;
-      if (ptrace (PTRACE_ARCH_PRCTL, lwpid, &base, ARCH_GET_FS) == 0)
+      struct reg r;
+      if (ptrace (PT_GETREGS, 0 /* PID XXX */, &base, lwpid) == 0)
 	{
-	  *addr = (CORE_ADDR) (uintptr_t) base;
+	  *addr = (CORE_ADDR) (uintptr_t) r.regs[_REG_FS];
 	  return 0;
 	}
 
@@ -253,25 +212,14 @@ x86_get_thread_area (int lwpid, CORE_ADDR *addr)
 #endif
 
   {
-    struct lwp_info *lwp = find_lwp_pid (ptid_t (lwpid));
-    struct thread_info *thr = get_lwp_thread (lwp);
-    struct regcache *regcache = get_thread_regcache (thr, 1);
-    unsigned int desc[4];
-    ULONGEST gs = 0;
-    const int reg_thread_area = 3; /* bits to scale down register value.  */
-    int idx;
+    struct reg r;
+    if (ptrace (PT_GETREGS, 0 /* PID XXX */, &base, lwpid) == 0)
+      {
+        *addr = (CORE_ADDR) (uintptr_t) r.regs[_REG_GS];
+         return 0;
+      }
 
-    collect_register_by_name (regcache, "gs", &gs);
-
-    idx = gs >> reg_thread_area;
-
-    if (ptrace (PTRACE_GET_THREAD_AREA,
-		lwpid_of (thr),
-		(void *) (long) idx, (unsigned long) &desc) < 0)
-      return -1;
-
-    *addr = desc[1];
-    return 0;
+    return -1;
   }
 }
 
