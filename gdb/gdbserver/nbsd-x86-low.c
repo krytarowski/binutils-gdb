@@ -347,35 +347,6 @@ x86_store_xstateregset (struct regcache *regcache, const void *buf)
   i387_xsave_to_cache (regcache, buf);
 }
 
-/* ??? The non-biarch i386 case stores all the i387 regs twice.
-   Once in i387_.*fsave.* and once in i387_.*fxsave.*.
-   This is, presumably, to handle the case where PTRACE_[GS]ETFPXREGS
-   doesn't work.  IWBN to avoid the duplication in the case where it
-   does work.  Maybe the arch_setup routine could check whether it works
-   and update the supported regsets accordingly.  */
-
-static struct regset_info x86_regsets[] =
-{
-#ifdef HAVE_PTRACE_GETREGS
-  { PTRACE_GETREGS, PTRACE_SETREGS, 0, sizeof (elf_gregset_t),
-    GENERAL_REGS,
-    x86_fill_gregset, x86_store_gregset },
-  { PTRACE_GETREGSET, PTRACE_SETREGSET, NT_X86_XSTATE, 0,
-    EXTENDED_REGS, x86_fill_xstateregset, x86_store_xstateregset },
-# ifndef __x86_64__
-#  ifdef HAVE_PTRACE_GETFPXREGS
-  { PTRACE_GETFPXREGS, PTRACE_SETFPXREGS, 0, sizeof (elf_fpxregset_t),
-    EXTENDED_REGS,
-    x86_fill_fpxregset, x86_store_fpxregset },
-#  endif
-# endif
-  { PTRACE_GETFPREGS, PTRACE_SETFPREGS, 0, sizeof (elf_fpregset_t),
-    FP_REGS,
-    x86_fill_fpregset, x86_store_fpregset },
-#endif /* HAVE_PTRACE_GETREGS */
-  NULL_REGSET
-};
-
 static CORE_ADDR
 x86_get_pc (struct regcache *regcache)
 {
@@ -584,27 +555,6 @@ x86_debug_reg_state (pid_t pid)
    from INF to PTRACE.  If DIRECTION is 0, copy from PTRACE to
    INF.  */
 
-static int
-x86_siginfo_fixup (siginfo_t *ptrace, gdb_byte *inf, int direction)
-{
-#ifdef __x86_64__
-  unsigned int machine;
-  int tid = lwpid_of (current_thread);
-  int is_elf64 = netbsd_pid_exe_is_elf_64_file (tid, &machine);
-
-  /* Is the inferior 32-bit?  If so, then fixup the siginfo object.  */
-  if (!is_64bit_tdesc ())
-      return amd64_netbsd_siginfo_fixup_common (ptrace, inf, direction,
-					       FIXUP_32);
-  /* No fixup for native x32 GDB.  */
-  else if (!is_elf64 && sizeof (void *) == 8)
-    return amd64_netbsd_siginfo_fixup_common (ptrace, inf, direction,
-					     FIXUP_X32);
-#endif
-
-  return 0;
-}
-
 static int use_xml;
 
 /* Format of XSAVE extended state is:
@@ -627,17 +577,6 @@ static int use_xml;
   states the processor/OS supports and what state, used or initialized,
   the process/thread is in.  */
 #define I386_NETBSD_XSAVE_XCR0_OFFSET 464
-
-/* Does the current host support the GETFPXREGS request?  The header
-   file may or may not define it, and even if it is defined, the
-   kernel will return EIO if it's running on a pre-SSE processor.  */
-int have_ptrace_getfpxregs =
-#ifdef HAVE_PTRACE_GETFPXREGS
-  -1
-#else
-  0
-#endif
-;
 
 /* Get netbsd/x86 target description from running target.  */
 
@@ -665,22 +604,6 @@ x86_netbsd_read_description (void)
 #endif
     }
 
-#if !defined __x86_64__ && defined HAVE_PTRACE_GETFPXREGS
-  if (machine == EM_386 && have_ptrace_getfpxregs == -1)
-    {
-      elf_fpxregset_t fpxregs;
-
-      if (ptrace (PTRACE_GETFPXREGS, tid, 0, (long) &fpxregs) < 0)
-	{
-	  have_ptrace_getfpxregs = 0;
-	  have_ptrace_getregset = 0;
-	  return i386_netbsd_read_description (X86_XSTATE_X87);
-	}
-      else
-	have_ptrace_getfpxregs = 1;
-    }
-#endif
-
   if (!use_xml)
     {
       x86_xcr0 = X86_XSTATE_SSE_MASK;
@@ -692,72 +615,6 @@ x86_netbsd_read_description (void)
       else
 #endif
 	return tdesc_i386_netbsd_no_xml;
-    }
-
-  if (have_ptrace_getregset == -1)
-    {
-      uint64_t xstateregs[(X86_XSTATE_SSE_SIZE / sizeof (uint64_t))];
-      struct iovec iov;
-
-      iov.iov_base = xstateregs;
-      iov.iov_len = sizeof (xstateregs);
-
-      /* Check if PTRACE_GETREGSET works.  */
-      if (ptrace (PTRACE_GETREGSET, tid,
-		  (unsigned int) NT_X86_XSTATE, (long) &iov) < 0)
-	have_ptrace_getregset = 0;
-      else
-	{
-	  have_ptrace_getregset = 1;
-
-	  /* Get XCR0 from XSAVE extended state.  */
-	  xcr0 = xstateregs[(I386_NETBSD_XSAVE_XCR0_OFFSET
-			     / sizeof (uint64_t))];
-
-	  /* Use PTRACE_GETREGSET if it is available.  */
-	  for (regset = x86_regsets;
-	       regset->fill_function != NULL; regset++)
-	    if (regset->get_request == PTRACE_GETREGSET)
-	      regset->size = X86_XSTATE_SIZE (xcr0);
-	    else if (regset->type != GENERAL_REGS)
-	      regset->size = 0;
-	}
-    }
-
-  /* Check the native XCR0 only if PTRACE_GETREGSET is available.  */
-  xcr0_features = (have_ptrace_getregset
-		   && (xcr0 & X86_XSTATE_ALL_MASK));
-
-  if (xcr0_features)
-    x86_xcr0 = xcr0;
-
-  if (machine == EM_X86_64)
-    {
-#ifdef __x86_64__
-      const target_desc *tdesc = NULL;
-
-      if (xcr0_features)
-	{
-	  tdesc = amd64_netbsd_read_description (xcr0 & X86_XSTATE_ALL_MASK,
-						!is_elf64);
-	}
-
-      if (tdesc == NULL)
-	tdesc = amd64_netbsd_read_description (X86_XSTATE_SSE_MASK, !is_elf64);
-      return tdesc;
-#endif
-    }
-  else
-    {
-      const target_desc *tdesc = NULL;
-
-      if (xcr0_features)
-	  tdesc = i386_netbsd_read_description (xcr0 & X86_XSTATE_ALL_MASK);
-
-      if (tdesc == NULL)
-	tdesc = i386_netbsd_read_description (X86_XSTATE_SSE);
-
-      return tdesc;
     }
 
   gdb_assert_not_reached ("failed to return tdesc");
