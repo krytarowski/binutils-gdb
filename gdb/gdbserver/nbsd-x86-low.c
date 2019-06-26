@@ -557,27 +557,6 @@ x86_debug_reg_state (pid_t pid)
 
 static int use_xml;
 
-/* Format of XSAVE extended state is:
-	struct
-	{
-	  fxsave_bytes[0..463]
-	  sw_usable_bytes[464..511]
-	  xstate_hdr_bytes[512..575]
-	  avx_bytes[576..831]
-	  future_state etc
-	};
-
-  Same memory layout will be used for the coredump NT_X86_XSTATE
-  representing the XSAVE extended state registers.
-
-  The first 8 bytes of the sw_usable_bytes[464..467] is the OS enabled
-  extended state mask, which is the same as the extended control register
-  0 (the XFEATURE_ENABLED_MASK register), XCR0.  We can use this mask
-  together with the mask saved in the xstate_hdr_bytes to determine what
-  states the processor/OS supports and what state, used or initialized,
-  the process/thread is in.  */
-#define I386_NETBSD_XSAVE_XCR0_OFFSET 464
-
 /* Get netbsd/x86 target description from running target.  */
 
 static const struct target_desc *
@@ -585,9 +564,7 @@ x86_netbsd_read_description (void)
 {
   unsigned int machine;
   int is_elf64;
-  int xcr0_features;
   int tid;
-  static uint64_t xcr0;
   struct regset_info *regset;
 
   tid = lwpid_of (current_thread);
@@ -606,8 +583,6 @@ x86_netbsd_read_description (void)
 
   if (!use_xml)
     {
-      x86_xcr0 = X86_XSTATE_SSE_MASK;
-
       /* Don't use XML.  */
 #ifdef __x86_64__
       if (machine == EM_X86_64)
