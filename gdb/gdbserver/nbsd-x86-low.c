@@ -299,54 +299,6 @@ x86_store_gregset (struct regcache *regcache, const void *buf)
     supply_register (regcache, i, ((char *) buf) + i386_regmap[i]);
 }
 
-static void
-x86_fill_fpregset (struct regcache *regcache, void *buf)
-{
-#ifdef __x86_64__
-  i387_cache_to_fxsave (regcache, buf);
-#else
-  i387_cache_to_fsave (regcache, buf);
-#endif
-}
-
-static void
-x86_store_fpregset (struct regcache *regcache, const void *buf)
-{
-#ifdef __x86_64__
-  i387_fxsave_to_cache (regcache, buf);
-#else
-  i387_fsave_to_cache (regcache, buf);
-#endif
-}
-
-#ifndef __x86_64__
-
-static void
-x86_fill_fpxregset (struct regcache *regcache, void *buf)
-{
-  i387_cache_to_fxsave (regcache, buf);
-}
-
-static void
-x86_store_fpxregset (struct regcache *regcache, const void *buf)
-{
-  i387_fxsave_to_cache (regcache, buf);
-}
-
-#endif
-
-static void
-x86_fill_xstateregset (struct regcache *regcache, void *buf)
-{
-  i387_cache_to_xsave (regcache, buf);
-}
-
-static void
-x86_store_xstateregset (struct regcache *regcache, const void *buf)
-{
-  i387_xsave_to_cache (regcache, buf);
-}
-
 static CORE_ADDR
 x86_get_pc (struct regcache *regcache)
 {
@@ -2509,13 +2461,14 @@ x86_arch_setup (void)
   current_process ()->tdesc = x86_netbsd_read_description ();
 }
 
+
 /* This is initialized assuming an amd64 target.
    x86_arch_setup will correct it for i386 or amd64 targets.  */
 
 struct netbsd_target_ops the_low_target =
 {
   x86_arch_setup,
-  x86_netbsd_regs_info,
+  /* XXX x86_netbsd_regs_info */ NULL,
   x86_cannot_fetch_register,
   x86_cannot_store_register,
   NULL, /* fetch_register */
@@ -2537,7 +2490,7 @@ struct netbsd_target_ops the_low_target =
   NULL,
   NULL,
   /* need to fix up i386 siginfo if host is amd64 */
-  x86_siginfo_fixup,
+  NULL,
   x86_netbsd_new_process,
   x86_netbsd_delete_process,
   x86_netbsd_new_thread,

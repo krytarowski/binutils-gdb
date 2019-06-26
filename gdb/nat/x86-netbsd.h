@@ -1,4 +1,4 @@
-/* Native-dependent code for GNU/Linux x86 (i386 and x86-64).
+/* Native-dependent code for NetBSD x86 (i386 and x86-64).
 
    Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
@@ -17,10 +17,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef NAT_X86_LINUX_H
-#define NAT_X86_LINUX_H
+#ifndef NAT_X86_NETBSD_H
+#define NAT_X86_NETBSD_H
 
-#include "nat/linux-nat.h"
+#include "nat/netbsd-nat.h"
 
 /* Set whether our local mirror of LWP's debug registers has been
    changed since the values were last written to the thread.  Nonzero
@@ -37,14 +37,14 @@ extern int lwp_debug_registers_changed (struct lwp_info *lwp);
 
 /* Function to call when a new thread is detected.  */
 
-extern void x86_linux_new_thread (struct lwp_info *lwp);
+extern void x86_netbsd_new_thread (struct lwp_info *lwp);
 
 /* Function to call when a thread is being deleted.  */
 
-extern void x86_linux_delete_thread (struct arch_lwp_info *arch_lwp);
+extern void x86_netbsd_delete_thread (struct arch_lwp_info *arch_lwp);
 
 /* Function to call prior to resuming a thread.  */
 
-extern void x86_linux_prepare_to_resume (struct lwp_info *lwp);
+extern void x86_netbsd_prepare_to_resume (struct lwp_info *lwp);
 
-#endif /* NAT_X86_LINUX_H */
+#endif /* NAT_X86_NETBSD_H */

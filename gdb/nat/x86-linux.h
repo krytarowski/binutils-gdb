@@ -1,4 +1,4 @@
-/* Native-dependent code for GNU/Linux x86 (i386 and x86-64).
+/* Native-dependent code for NetBSD x86 (i386 and x86-64).
 
    Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
