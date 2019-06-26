@@ -151,7 +151,7 @@ static const int x86_64_regmap[] =
 };
 
 #define X86_64_NUM_REGS (sizeof (x86_64_regmap) / sizeof (x86_64_regmap[0]))
-#define X86_64_USER_REGS (GS + 1)
+#define X86_64_USER_REGS (15 + 1)
 
 #else /* ! __x86_64__ */
 
@@ -263,9 +263,6 @@ x86_fill_gregset (struct regcache *regcache, void *buf)
   for (i = 0; i < I386_NUM_REGS; i++)
     collect_register (regcache, i, ((char *) buf) + i386_regmap[i]);
 
-  collect_register_by_name (regcache, "orig_eax",
-			    ((char *) buf) + ORIG_EAX * REGSIZE);
-
 #ifdef __x86_64__
   /* Sign extend EAX value to avoid potential syscall restart
      problems. 
@@ -300,9 +297,6 @@ x86_store_gregset (struct regcache *regcache, const void *buf)
 
   for (i = 0; i < I386_NUM_REGS; i++)
     supply_register (regcache, i, ((char *) buf) + i386_regmap[i]);
-
-  supply_register_by_name (regcache, "orig_eax",
-			   ((char *) buf) + ORIG_EAX * REGSIZE);
 }
 
 static void
@@ -886,17 +880,11 @@ x86_arch_setup (void)
 static void
 x86_get_syscall_trapinfo (struct regcache *regcache, int *sysno)
 {
-  int use_64bit = register_size (regcache->tdesc, 0) == 8;
+  ptrace_siginfo_t psi;
 
-  if (use_64bit)
-    {
-      long l_sysno;
+  ptrace(PT_SET_SIGINFO, 0 /* XXX PID */, &psi, sizeof(psi));
 
-      collect_register_by_name (regcache, "orig_rax", &l_sysno);
-      *sysno = (int) l_sysno;
-    }
-  else
-    collect_register_by_name (regcache, "orig_eax", sysno);
+  *sysno = psi.psi_siginfo.si_sysnum;
 }
 
 static int
