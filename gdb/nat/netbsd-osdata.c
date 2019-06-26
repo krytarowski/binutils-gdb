@@ -1,4 +1,4 @@
-/* Linux-specific functions to retrieve OS data.
+/* NetBSD-specific functions to retrieve OS data.
 
    Copyright (C) 2009-2019 Free Software Foundation, Inc.
 
@@ -18,7 +18,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "common/common-defs.h"
-#include "linux-osdata.h"
+#include "netbsd-osdata.h"
 
 #include <sys/types.h>
 #include <sys/sysinfo.h>
@@ -59,7 +59,7 @@ typedef long long TIME_T;
 /* Compute and return the processor core of a given thread.  */
 
 int
-linux_common_core_of_thread (ptid_t ptid)
+netbsd_common_core_of_thread (ptid_t ptid)
 {
   char filename[sizeof ("/proc//task//stat") + 2 * MAX_PID_T_STRLEN];
   char *content = NULL;
@@ -123,7 +123,7 @@ command_from_pid (char *command, int maxlen, PID_T pid)
   if (fp)
     {
       /* sizeof (cmd) should be greater or equal to TASK_COMM_LEN (in
-	 include/linux/sched.h in the Linux kernel sources) plus two
+	 include/netbsd/sched.h in the netbsd kernel sources) plus two
 	 (for the brackets).  */
       char cmd[18];
       PID_T stat_pid;
@@ -262,7 +262,7 @@ get_cores_used_by_process (PID_T pid, int *cores, const int num_cores)
 	    continue;
 
 	  sscanf (dp->d_name, "%lld", &tid);
-	  core = linux_common_core_of_thread (ptid_t ((pid_t) pid,
+	  core = netbsd_common_core_of_thread (ptid_t ((pid_t) pid,
 						      (pid_t) tid, 0));
 
 	  if (core >= 0 && core < num_cores)
@@ -279,7 +279,7 @@ get_cores_used_by_process (PID_T pid, int *cores, const int num_cores)
 }
 
 static void
-linux_xfer_osdata_processes (struct buffer *buffer)
+netbsd_xfer_osdata_processes (struct buffer *buffer)
 {
   DIR *dirp;
 
@@ -397,7 +397,7 @@ struct pid_pgid_entry
 /* Collect all process groups from /proc in BUFFER.  */
 
 static void
-linux_xfer_osdata_processgroups (struct buffer *buffer)
+netbsd_xfer_osdata_processgroups (struct buffer *buffer)
 {
   DIR *dirp;
 
@@ -467,7 +467,7 @@ linux_xfer_osdata_processgroups (struct buffer *buffer)
    then tasks within each process in BUFFER.  */
 
 static void
-linux_xfer_osdata_threads (struct buffer *buffer)
+netbsd_xfer_osdata_threads (struct buffer *buffer)
 {
   DIR *dirp;
 
@@ -518,7 +518,7 @@ linux_xfer_osdata_threads (struct buffer *buffer)
 			continue;
 
 		      tid = atoi (dp2->d_name);
-		      core = linux_common_core_of_thread (ptid_t (pid, tid, 0));
+		      core = netbsd_common_core_of_thread (ptid_t (pid, tid, 0));
 
 		      buffer_xml_printf
 			(buffer,
@@ -548,7 +548,7 @@ linux_xfer_osdata_threads (struct buffer *buffer)
 /* Collect data about the cpus/cores on the system in BUFFER.  */
 
 static void
-linux_xfer_osdata_cpus (struct buffer *buffer)
+netbsd_xfer_osdata_cpus (struct buffer *buffer)
 {
   int first_item = 1;
 
@@ -614,7 +614,7 @@ linux_xfer_osdata_cpus (struct buffer *buffer)
    found about them into BUFFER.  */
 
 static void
-linux_xfer_osdata_fds (struct buffer *buffer)
+netbsd_xfer_osdata_fds (struct buffer *buffer)
 {
   DIR *dirp;
 
@@ -700,7 +700,7 @@ linux_xfer_osdata_fds (struct buffer *buffer)
 static const char *
 format_socket_state (unsigned char state)
 {
-  /* Copied from include/net/tcp_states.h in the Linux kernel sources.  */
+  /* Copied from include/net/tcp_states.h in the netbsd kernel sources.  */
   enum {
     TCP_ESTABLISHED = 1,
     TCP_SYN_SENT,
@@ -751,7 +751,7 @@ union socket_addr
     struct sockaddr_in6 sin6;
   };
 
-/* Auxiliary function used by linux_xfer_osdata_isocket.  Formats
+/* Auxiliary function used by netbsd_xfer_osdata_isocket.  Formats
    information for all open internet sockets of type FAMILY on the
    system into BUFFER.  If TCP is set, only TCP sockets are processed,
    otherwise only UDP sockets are processed.  */
@@ -888,7 +888,7 @@ print_sockets (unsigned short family, int tcp, struct buffer *buffer)
 /* Collect data about internet sockets and write it into BUFFER.  */
 
 static void
-linux_xfer_osdata_isockets (struct buffer *buffer)
+netbsd_xfer_osdata_isockets (struct buffer *buffer)
 {
   buffer_grow_str (buffer, "<osdata type=\"I sockets\">\n");
 
@@ -939,7 +939,7 @@ group_from_gid (char *group, int maxlen, gid_t gid)
    into BUFFER.  */
 
 static void
-linux_xfer_osdata_shm (struct buffer *buffer)
+netbsd_xfer_osdata_shm (struct buffer *buffer)
 {
   buffer_grow_str (buffer, "<osdata type=\"shared memory\">\n");
 
@@ -1033,7 +1033,7 @@ linux_xfer_osdata_shm (struct buffer *buffer)
    into BUFFER.  */
 
 static void
-linux_xfer_osdata_sem (struct buffer *buffer)
+netbsd_xfer_osdata_sem (struct buffer *buffer)
 {
   buffer_grow_str (buffer, "<osdata type=\"semaphores\">\n");
 
@@ -1111,7 +1111,7 @@ linux_xfer_osdata_sem (struct buffer *buffer)
    into BUFFER.  */
 
 static void
-linux_xfer_osdata_msg (struct buffer *buffer)
+netbsd_xfer_osdata_msg (struct buffer *buffer)
 {
   buffer_grow_str (buffer, "<osdata type=\"message queues\">\n");
 
@@ -1203,7 +1203,7 @@ linux_xfer_osdata_msg (struct buffer *buffer)
    BUFFER.  */
 
 static void
-linux_xfer_osdata_modules (struct buffer *buffer)
+netbsd_xfer_osdata_modules (struct buffer *buffer)
 {
   buffer_grow_str (buffer, "<osdata type=\"modules\">\n");
 
@@ -1274,7 +1274,7 @@ linux_xfer_osdata_modules (struct buffer *buffer)
   buffer_grow_str0 (buffer, "</osdata>\n");
 }
 
-static void linux_xfer_osdata_info_os_types (struct buffer *buffer);
+static void netbsd_xfer_osdata_info_os_types (struct buffer *buffer);
 
 struct osdata_type {
   const char *type;
@@ -1285,34 +1285,34 @@ struct osdata_type {
   struct buffer buffer;
 } osdata_table[] = {
   { "types", "Types", "Listing of info os types you can list",
-    linux_xfer_osdata_info_os_types, -1 },
+    netbsd_xfer_osdata_info_os_types, -1 },
   { "cpus", "CPUs", "Listing of all cpus/cores on the system",
-    linux_xfer_osdata_cpus, -1 },
+    netbsd_xfer_osdata_cpus, -1 },
   { "files", "File descriptors", "Listing of all file descriptors",
-    linux_xfer_osdata_fds, -1 },
+    netbsd_xfer_osdata_fds, -1 },
   { "modules", "Kernel modules", "Listing of all loaded kernel modules",
-    linux_xfer_osdata_modules, -1 },
+    netbsd_xfer_osdata_modules, -1 },
   { "msg", "Message queues", "Listing of all message queues",
-    linux_xfer_osdata_msg, -1 },
+    netbsd_xfer_osdata_msg, -1 },
   { "processes", "Processes", "Listing of all processes",
-    linux_xfer_osdata_processes, -1 },
+    netbsd_xfer_osdata_processes, -1 },
   { "procgroups", "Process groups", "Listing of all process groups",
-    linux_xfer_osdata_processgroups, -1 },
+    netbsd_xfer_osdata_processgroups, -1 },
   { "semaphores", "Semaphores", "Listing of all semaphores",
-    linux_xfer_osdata_sem, -1 },
+    netbsd_xfer_osdata_sem, -1 },
   { "shm", "Shared-memory regions", "Listing of all shared-memory regions",
-    linux_xfer_osdata_shm, -1 },
+    netbsd_xfer_osdata_shm, -1 },
   { "sockets", "Sockets", "Listing of all internet-domain sockets",
-    linux_xfer_osdata_isockets, -1 },
+    netbsd_xfer_osdata_isockets, -1 },
   { "threads", "Threads", "Listing of all threads",
-  linux_xfer_osdata_threads, -1 },
+  netbsd_xfer_osdata_threads, -1 },
   { NULL, NULL, NULL }
 };
 
 /* Collect data about all types info os can show in BUFFER.  */
 
 static void
-linux_xfer_osdata_info_os_types (struct buffer *buffer)
+netbsd_xfer_osdata_info_os_types (struct buffer *buffer)
 {
   buffer_grow_str (buffer, "<osdata type=\"types\">\n");
 
@@ -1366,7 +1366,7 @@ common_getter (struct osdata_type *osd,
 }
 
 LONGEST
-linux_common_xfer_osdata (const char *annex, gdb_byte *readbuf,
+netbsd_common_xfer_osdata (const char *annex, gdb_byte *readbuf,
 			  ULONGEST offset, ULONGEST len)
 {
   if (!annex || *annex == '\0')
