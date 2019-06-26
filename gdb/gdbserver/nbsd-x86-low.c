@@ -240,65 +240,6 @@ x86_cannot_fetch_register (int regno)
   return regno >= I386_NUM_REGS;
 }
 
-static void
-x86_fill_gregset (struct regcache *regcache, void *buf)
-{
-  int i;
-
-#ifdef __x86_64__
-  if (register_size (regcache->tdesc, 0) == 8)
-    {
-      for (i = 0; i < X86_64_NUM_REGS; i++)
-	if (x86_64_regmap[i] != -1)
-	  collect_register (regcache, i, ((char *) buf) + x86_64_regmap[i]);
-
-      return;
-    }
-
-  /* 32-bit inferior registers need to be zero-extended.
-     Callers would read uninitialized memory otherwise.  */
-  memset (buf, 0x00, X86_64_USER_REGS * 8);
-#endif
-
-  for (i = 0; i < I386_NUM_REGS; i++)
-    collect_register (regcache, i, ((char *) buf) + i386_regmap[i]);
-
-#ifdef __x86_64__
-  /* Sign extend EAX value to avoid potential syscall restart
-     problems. 
-
-     See amd64_netbsd_collect_native_gregset() in gdb/amd64-netbsd-nat.c
-     for a detailed explanation.  */
-  if (register_size (regcache->tdesc, 0) == 4)
-    {
-      void *ptr = ((gdb_byte *) buf
-                   + i386_regmap[find_regno (regcache->tdesc, "eax")]);
-
-      *(int64_t *) ptr = *(int32_t *) ptr;
-    }
-#endif
-}
-
-static void
-x86_store_gregset (struct regcache *regcache, const void *buf)
-{
-  int i;
-
-#ifdef __x86_64__
-  if (register_size (regcache->tdesc, 0) == 8)
-    {
-      for (i = 0; i < X86_64_NUM_REGS; i++)
-	if (x86_64_regmap[i] != -1)
-	  supply_register (regcache, i, ((char *) buf) + x86_64_regmap[i]);
-
-      return;
-    }
-#endif
-
-  for (i = 0; i < I386_NUM_REGS; i++)
-    supply_register (regcache, i, ((char *) buf) + i386_regmap[i]);
-}
-
 static CORE_ADDR
 x86_get_pc (struct regcache *regcache)
 {
@@ -2516,20 +2457,9 @@ initialize_low_arch (void)
   /* Initialize the netbsd target descriptions.  */
 #ifdef __x86_64__
   tdesc_amd64_netbsd_no_xml = allocate_target_description ();
-  copy_target_description (tdesc_amd64_netbsd_no_xml,
-			   amd64_netbsd_read_description (X86_XSTATE_SSE_MASK,
-							 false));
   tdesc_amd64_netbsd_no_xml->xmltarget = xmltarget_amd64_netbsd_no_xml;
 #endif
 
-#if GDB_SELF_TEST
-  initialize_low_tdesc ();
-#endif
-
   tdesc_i386_netbsd_no_xml = allocate_target_description ();
-  copy_target_description (tdesc_i386_netbsd_no_xml,
-			   i386_netbsd_read_description (X86_XSTATE_SSE_MASK));
   tdesc_i386_netbsd_no_xml->xmltarget = xmltarget_i386_netbsd_no_xml;
-
-  initialize_regsets_info (&x86_regsets_info);
 }
