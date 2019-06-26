@@ -2503,22 +2503,6 @@ x86_supports_hardware_single_step (void)
   return 1;
 }
 
-static int
-x86_get_ipa_tdesc_idx (void)
-{
-  struct regcache *regcache = get_thread_regcache (current_thread, 0);
-  const struct target_desc *tdesc = regcache->tdesc;
-
-#ifdef __x86_64__
-  return amd64_get_ipa_tdesc_idx (tdesc);
-#endif
-
-  if (tdesc == tdesc_i386_netbsd_no_xml)
-    return X86_TDESC_SSE;
-
-  return i386_get_ipa_tdesc_idx (tdesc);
-}
-
 /* This is initialized assuming an amd64 target.
    x86_arch_setup will correct it for i386 or amd64 targets.  */
 
@@ -2564,7 +2548,7 @@ struct netbsd_target_ops the_low_target =
   NULL, /* breakpoint_kind_from_current_state */
   x86_supports_hardware_single_step,
   x86_get_syscall_trapinfo,
-  x86_get_ipa_tdesc_idx,
+  NULL,
 };
 
 void
