@@ -252,19 +252,6 @@ x86_fill_gregset (struct regcache *regcache, void *buf)
 	if (x86_64_regmap[i] != -1)
 	  collect_register (regcache, i, ((char *) buf) + x86_64_regmap[i]);
 
-#ifndef HAVE_STRUCT_USER_REGS_STRUCT_FS_BASE
-      {
-        unsigned long base;
-        int lwpid = lwpid_of (current_thread);
-
-        collect_register_by_name (regcache, "fs_base", &base);
-        ptrace (PTRACE_ARCH_PRCTL, lwpid, &base, ARCH_SET_FS);
-
-        collect_register_by_name (regcache, "gs_base", &base);
-        ptrace (PTRACE_ARCH_PRCTL, lwpid, &base, ARCH_SET_GS);
-      }
-#endif
-
       return;
     }
 
@@ -307,18 +294,6 @@ x86_store_gregset (struct regcache *regcache, const void *buf)
 	if (x86_64_regmap[i] != -1)
 	  supply_register (regcache, i, ((char *) buf) + x86_64_regmap[i]);
 
-#ifndef HAVE_STRUCT_USER_REGS_STRUCT_FS_BASE
-      {
-        unsigned long base;
-        int lwpid = lwpid_of (current_thread);
-
-        if (ptrace (PTRACE_ARCH_PRCTL, lwpid, &base, ARCH_GET_FS) == 0)
-          supply_register_by_name (regcache, "fs_base", &base);
-
-        if (ptrace (PTRACE_ARCH_PRCTL, lwpid, &base, ARCH_GET_GS) == 0)
-          supply_register_by_name (regcache, "gs_base", &base);
-      }
-#endif
       return;
     }
 #endif
