@@ -1,4 +1,4 @@
-/* Low-level debug register code for GNU/Linux x86 (i386 and x86-64).
+/* Low-level debug register code for NetBSD x86 (i386 and x86-64).
 
    Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
@@ -19,39 +19,26 @@
 
 #include "common/common-defs.h"
 #include "nat/gdb_ptrace.h"
-#include <sys/user.h>
 #include "target/waitstatus.h"
 #include "nat/x86-netbsd.h"
 #include "nat/x86-dregs.h"
 #include "nat/x86-netbsd-dregs.h"
-
-/* Return the offset of REGNUM in the u_debugreg field of struct
-   user.  */
-
-static int
-u_debugreg_offset (int regnum)
-{
-  return (offsetof (struct user, u_debugreg)
-	  + sizeof (((struct user *) 0)->u_debugreg[0]) * regnum);
-}
 
 /* Get debug register REGNUM value from the LWP specified by PTID.  */
 
 static unsigned long
 x86_netbsd_dr_get (ptid_t ptid, int regnum)
 {
-  int tid;
-  unsigned long value;
+  struct dbreg dbr;
+  lwpid_t tid;
 
-  gdb_assert (ptid.lwp_p ());
+  pid = ptid.pid ();
   tid = ptid.lwp ();
 
-  errno = 0;
-  value = ptrace (PTRACE_PEEKUSER, tid, u_debugreg_offset (regnum), 0);
-  if (errno != 0)
+  if (ptrace (PT_GETDBREGS, pid, &dbr, tid) == -1)
     perror_with_name (_("Couldn't read debug register"));
 
-  return value;
+  return dbr.dr[regnum];
 }
 
 /* Set debug register REGNUM to VALUE in the LWP specified by PTID.  */
@@ -59,14 +46,18 @@ x86_netbsd_dr_get (ptid_t ptid, int regnum)
 static void
 x86_netbsd_dr_set (ptid_t ptid, int regnum, unsigned long value)
 {
-  int tid;
+  struct dbreg dbr;
+  lwpid_t tid;
 
-  gdb_assert (ptid.lwp_p ());
+  pid = ptid.pid ();
   tid = ptid.lwp ();
 
-  errno = 0;
-  ptrace (PTRACE_POKEUSER, tid, u_debugreg_offset (regnum), value);
-  if (errno != 0)
+  if (ptrace (PT_GETDBREGS, pid, &dbr, tid) == -1)
+    perror_with_name (_("Couldn't read debug register"));
+
+  dbr.dr[regnum] = value;
+
+  if (ptrace (PT_SETDBREGS, pid, &dbr, tid) == -1)
     perror_with_name (_("Couldn't write debug register"));
 }
 
@@ -150,14 +141,6 @@ x86_netbsd_update_debug_registers (struct lwp_info *lwp)
       struct x86_debug_reg_state *state
 	= x86_debug_reg_state (ptid.pid ());
       int i;
-
-      /* Prior to netbsd kernel 2.6.33 commit
-	 72f674d203cd230426437cdcf7dd6f681dad8b0d, setting DR0-3 to
-	 a value that did not match what was enabled in DR_CONTROL
-	 resulted in EINVAL.  To avoid this we zero DR_CONTROL before
-	 writing address registers, only writing DR_CONTROL's actual
-	 value once all the addresses are in place.  */
-      x86_netbsd_dr_set (ptid, DR_CONTROL, 0);
 
       ALL_DEBUG_ADDRESS_REGISTERS (i)
 	if (state->dr_ref_count[i] > 0)
