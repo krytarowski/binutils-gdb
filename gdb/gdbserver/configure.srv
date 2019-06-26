@@ -399,8 +399,8 @@ case "${target}" in
   x86_64-*-netbsd*)	srv_regobj="$srv_amd64_nbsd_regobj $srv_i386_nbsd_regobj"
 			srv_tgtobj="$srv_nbsd_obj nbsd-x86-low.o x86-low.o x86-dregs.o i387-fp.o"
 			srv_tgtobj="${srv_tgtobj} arch/i386.o arch/amd64.o"
-			srv_tgtobj="${srv_tgtobj} x86-nbsd.o"
-			srv_tgtobj="${srv_tgtobj} x86-nbsd-dregs.o"
+			srv_tgtobj="${srv_tgtobj} x86-netbsd.o"
+			srv_tgtobj="${srv_tgtobj} x86-netbsd-dregs.o"
 			srv_nbsd_usrregs=yes # This is for i386 progs.
 			srv_nbsd_regsets=yes
 			;;
