@@ -41,7 +41,6 @@
 #include "nat/netbsd-nat.h"
 #include "nat/x86-netbsd.h"
 #include "nat/x86-netbsd-dregs.h"
-#include "netbsd-x86-tdesc.h"
 
 #ifdef __x86_64__
 static struct target_desc *tdesc_amd64_netbsd_no_xml;
