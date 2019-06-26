@@ -2503,6 +2503,12 @@ x86_supports_hardware_single_step (void)
   return 1;
 }
 
+static void
+x86_arch_setup (void)
+{
+  current_process ()->tdesc = x86_netbsd_read_description ();
+}
+
 /* This is initialized assuming an amd64 target.
    x86_arch_setup will correct it for i386 or amd64 targets.  */
 
