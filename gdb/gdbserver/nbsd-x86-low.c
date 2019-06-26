@@ -195,32 +195,25 @@ is_64bit_tdesc (void)
 static int
 x86_get_thread_area (int lwpid, CORE_ADDR *addr)
 {
+  struct reg r;
+
+  if (ptrace (PT_GETREGS, 0 /* PID XXX */, &r, lwpid) != 0)
+    return -1;
+
 #ifdef __x86_64__
   int use_64bit = is_64bit_tdesc ();
 
   if (use_64bit)
     {
-      struct reg r;
-      if (ptrace (PT_GETREGS, 0 /* PID XXX */, &base, lwpid) == 0)
-	{
-	  *addr = (CORE_ADDR) (uintptr_t) r.regs[_REG_FS];
-	  return 0;
-	}
-
-      return -1;
+      *addr = (CORE_ADDR) (uintptr_t) r.regs[_REG_FS];
+       return 0;
     }
+  else
 #endif
-
-  {
-    struct reg r;
-    if (ptrace (PT_GETREGS, 0 /* PID XXX */, &base, lwpid) == 0)
-      {
-        *addr = (CORE_ADDR) (uintptr_t) r.regs[_REG_GS];
-         return 0;
-      }
-
-    return -1;
-  }
+    {
+      *addr = (CORE_ADDR) (uintptr_t) r.regs[_REG_GS];
+      return 0;
+    }
 }
 
 
