@@ -27,10 +27,6 @@
 #include "common/x86-xstate.h"
 #include "nat/gdb_ptrace.h"
 
-#ifdef __x86_64__
-#include "nat/amd64-netbsd-siginfo.h"
-#endif
-
 #include "gdb_proc_service.h"
 /* Don't include elf/common.h if netbsd/elf.h got included by
    gdb_proc_service.h.  */
