@@ -565,7 +565,6 @@ x86_netbsd_read_description (void)
   unsigned int machine;
   int is_elf64;
   int tid;
-  struct regset_info *regset;
 
   tid = lwpid_of (current_thread);
 
@@ -657,58 +656,6 @@ x86_netbsd_process_qsupported (char **features, int count)
 }
 
 /* Common for x86/x86-64.  */
-
-static struct regsets_info x86_regsets_info =
-  {
-    x86_regsets, /* regsets */
-    0, /* num_regsets */
-    NULL, /* disabled_regsets */
-  };
-
-#ifdef __x86_64__
-static struct regs_info amd64_netbsd_regs_info =
-  {
-    NULL, /* regset_bitmap */
-    NULL, /* usrregs_info */
-    &x86_regsets_info
-  };
-#endif
-static struct usrregs_info i386_netbsd_usrregs_info =
-  {
-    I386_NUM_REGS,
-    i386_regmap,
-  };
-
-static struct regs_info i386_netbsd_regs_info =
-  {
-    NULL, /* regset_bitmap */
-    &i386_netbsd_usrregs_info,
-    &x86_regsets_info
-  };
-
-const struct regs_info *
-x86_netbsd_regs_info (void)
-{
-#ifdef __x86_64__
-  if (is_64bit_tdesc ())
-    return &amd64_netbsd_regs_info;
-  else
-#endif
-    return &i386_netbsd_regs_info;
-}
-
-/* Initialize the target description for the architecture of the
-   inferior.  */
-
-static void
-x86_arch_setup (void)
-{
-  current_process ()->tdesc = x86_netbsd_read_description ();
-}
-
-/* Fill *SYSNO and *SYSRET with the syscall nr trapped and the syscall return
-   code.  This should only be called if LWP got a SYSCALL_SIGTRAP.  */
-
 static void
 x86_get_syscall_trapinfo (struct regcache *regcache, int *sysno)
 {
