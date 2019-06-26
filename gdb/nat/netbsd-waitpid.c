@@ -1,4 +1,4 @@
-/* Wrapper implementation for waitpid for GNU/Linux (LWP layer).
+/* Wrapper implementation for waitpid for NetBSD (LWP layer).
 
    Copyright (C) 2001-2019 Free Software Foundation, Inc.
 
@@ -19,8 +19,8 @@
 
 #include "common/common-defs.h"
 
-#include "linux-nat.h"
-#include "linux-waitpid.h"
+#include "netbsd-nat.h"
+#include "netbsd-waitpid.h"
 #include "common/gdb_wait.h"
 
 /* Convert wait status STATUS to a string.  Used for printing debug
@@ -49,7 +49,7 @@ status_to_str (int status)
   return buf;
 }
 
-/* See linux-waitpid.h.  */
+/* See netbsd-waitpid.h.  */
 
 int
 my_waitpid (int pid, int *status, int flags)
