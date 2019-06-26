@@ -20,7 +20,6 @@
 #define GDBSERVER_NETBSD_LOW_H
 
 #include "nat/netbsd-nat.h"
-#include "nat/gdb_thread_db.h"
 #include <signal.h>
 
 #include "gdbthread.h"
