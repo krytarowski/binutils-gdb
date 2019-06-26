@@ -31,6 +31,7 @@ x86_netbsd_dr_get (ptid_t ptid, int regnum)
 {
   struct dbreg dbr;
   lwpid_t tid;
+  pid_t pid;
 
   pid = ptid.pid ();
   tid = ptid.lwp ();
@@ -48,6 +49,7 @@ x86_netbsd_dr_set (ptid_t ptid, int regnum, unsigned long value)
 {
   struct dbreg dbr;
   lwpid_t tid;
+  pid_t pid;
 
   pid = ptid.pid ();
   tid = ptid.lwp ();
