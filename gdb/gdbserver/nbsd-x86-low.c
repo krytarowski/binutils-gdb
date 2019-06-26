@@ -18,6 +18,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "server.h"
+#include <sys/types.h>
 #include <signal.h>
 #include <limits.h>
 #include <inttypes.h>
@@ -65,7 +66,7 @@ static const char *xmltarget_amd64_netbsd_no_xml = "@<target>\
 </target>";
 #endif
 
-#include <sys/reg.h>
+#include <machine/reg.h>
 #include <sys/uio.h>
 
 /* Per-process arch-specific data we want to keep.  */
