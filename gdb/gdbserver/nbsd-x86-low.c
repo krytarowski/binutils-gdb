@@ -28,9 +28,6 @@
 #include "common/x86-xstate.h"
 #include "nat/gdb_ptrace.h"
 
-#include "gdb_proc_service.h"
-/* Don't include elf/common.h if netbsd/elf.h got included by
-   gdb_proc_service.h.  */
 #ifndef ELFMAG0
 #include "elf/common.h"
 #endif
