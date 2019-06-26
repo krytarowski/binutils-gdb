@@ -23,7 +23,6 @@
 #include <signal.h>
 
 #include "gdbthread.h"
-#include "gdb_proc_service.h"
 
 /* Included for ptrace type definitions.  */
 #include "nat/netbsd-ptrace.h"
