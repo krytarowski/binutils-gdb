@@ -1,4 +1,4 @@
-/* GNU/Linux/x86-64 specific low level interface, for the remote server
+/* NetBSD/x86-64 specific low level interface, for the remote server
    for GDB.
    Copyright (C) 2002-2019 Free Software Foundation, Inc.
 
@@ -74,15 +74,27 @@ struct arch_process_info
 
 #ifdef __x86_64__
 
-/* Mapping between the general-purpose registers in `struct user'
-   format and GDB's register array layout.
+/* Mapping between the general-purpose registers and GDB's register array
+   layout.
    Note that the transfer layout uses 64-bit regs.  */
 static /*const*/ int i386_regmap[] = 
 {
-  RAX * 8, RCX * 8, RDX * 8, RBX * 8,
-  RSP * 8, RBP * 8, RSI * 8, RDI * 8,
-  RIP * 8, EFLAGS * 8, CS * 8, SS * 8,
-  DS * 8, ES * 8, FS * 8, GS * 8
+  14 * 8,                       /* %eax */
+  3 * 8,                        /* %ecx */
+  2 * 8,                        /* %edx */
+  13 * 8,                       /* %ebx */
+  24 * 8,                       /* %esp */
+  12 * 8,                       /* %ebp */
+  1 * 8,                        /* %esi */
+  0 * 8,                        /* %edi */
+  21 * 8,                       /* %eip */
+  23 * 8,                       /* %eflags */
+  22 * 8,                       /* %cs */
+  25 * 8,                       /* %ss */
+  18 * 8,                       /* %ds */
+  17 * 8,                       /* %es */
+  16 * 8,                       /* %fs */
+  15 * 8                        /* %gs */
 };
 
 #define I386_NUM_REGS (sizeof (i386_regmap) / sizeof (i386_regmap[0]))
@@ -93,23 +105,37 @@ static /*const*/ int i386_regmap[] =
 
 static const int x86_64_regmap[] =
 {
-  RAX * 8, RBX * 8, RCX * 8, RDX * 8,
-  RSI * 8, RDI * 8, RBP * 8, RSP * 8,
-  R8 * 8, R9 * 8, R10 * 8, R11 * 8,
-  R12 * 8, R13 * 8, R14 * 8, R15 * 8,
-  RIP * 8, EFLAGS * 8, CS * 8, SS * 8,
-  DS * 8, ES * 8, FS * 8, GS * 8,
+  14 * 8,                       /* %rax */
+  13 * 8,                       /* %rbx */
+  3 * 8,                        /* %rcx */
+  2 * 8,                        /* %rdx */
+  1 * 8,                        /* %rsi */
+  0 * 8,                        /* %rdi */
+  12 * 8,                       /* %rbp */
+  24 * 8,                       /* %rsp */
+  4 * 8,                        /* %r8 ..  */
+  5 * 8,
+  6 * 8,
+  7 * 8,
+  8 * 8,                                                                                                                                                     
+  9 * 8,
+  10 * 8,
+  11 * 8,                       /* ... %r15 */
+  21 * 8,                       /* %rip */
+  23 * 8,                       /* %eflags */
+  22 * 8,                       /* %cs */
+  25 * 8,                       /* %ss */
+  18 * 8,                       /* %ds */
+  17 * 8,                       /* %es */                                                                                                                    
+  16 * 8,                       /* %fs */
+  15 * 8                        /* %gs */
   -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1,
   -1,
   -1, -1, -1, -1, -1, -1, -1, -1,
-  ORIG_RAX * 8,
-#ifdef HAVE_STRUCT_USER_REGS_STRUCT_FS_BASE
-  21 * 8,  22 * 8,
-#else
+  14 * 8,			/* original %rax ? */
   -1, -1,
-#endif
   -1, -1, -1, -1,			/* MPX registers BND0 ... BND3.  */
   -1, -1,				/* MPX registers BNDCFGU, BNDSTATUS.  */
   -1, -1, -1, -1, -1, -1, -1, -1,       /* xmm16 ... xmm31 (AVX512)  */
