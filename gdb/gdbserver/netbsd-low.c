@@ -56,6 +56,26 @@ static int debug_nbsd_lwp = 0;
 
 /* See nat/netbsd-nat.h.  */
 
+#if 0
+struct thread_info *
+find_thread_ptid (ptid_t ptid)
+{
+  inferior *inf = find_inferior_ptid (ptid);
+  if (inf == NULL)
+    return NULL;
+  return find_thread_ptid (inf, ptid);
+}
+
+
+static int
+in_thread_list (ptid_t ptid)
+{
+  return find_thread_ptid (ptid) != nullptr;
+}
+#endif
+
+#define in_thread_list(a) 0 /* XXX */
+
 ptid_t
 ptid_of_lwp (struct lwp_info *lwp)
 {
@@ -628,7 +648,6 @@ netbsd_wait (ptid_t ptid,
     {
       ptrace_state_t pst;
       ptrace_siginfo_t psi, child_psi;
-      int status;
       pid_t pid, child, wchild;
       ptid_t child_ptid;
       lwpid_t lwp;
