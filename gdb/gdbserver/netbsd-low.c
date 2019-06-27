@@ -16,6 +16,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include <sys/types.h>
+#include <sys/ptrace.h>
+#include <sys/sysctl.h>
+
 #include "server.h"
 #include "netbsd-low.h"
 #include "nat/netbsd-osdata.h"
@@ -75,6 +79,36 @@ in_thread_list (ptid_t ptid)
 #endif
 
 #define in_thread_list(a) 0 /* XXX */
+#defien thread_change_ptid(a) 0 /* XXX */
+
+static char *
+nbsd_nat_target::pid_to_exec_file (int pid)
+{
+  ssize_t len;
+  static char buf[PATH_MAX];
+  char name[PATH_MAX];
+
+  size_t buflen;
+  int mib[4];
+
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_PROC_ARGS;
+  mib[2] = pid;
+  mib[3] = KERN_PROC_PATHNAME;
+  buflen = sizeof buf;
+  if (sysctl (mib, 4, buf, &buflen, NULL, 0) == 0)
+    return buf; 
+
+  xsnprintf (name, PATH_MAX, "/proc/%d/exe", pid);
+  len = readlink (name, buf, PATH_MAX - 1);
+  if (len != -1)
+    {
+      buf[len] = '\0';
+      return buf;
+    }
+    
+  return NULL;
+}
 
 ptid_t
 ptid_of_lwp (struct lwp_info *lwp)
