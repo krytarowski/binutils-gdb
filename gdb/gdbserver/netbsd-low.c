@@ -28,8 +28,6 @@
 #include "common/gdb_wait.h"
 #include "nat/gdb_ptrace.h"
 #include "nat/netbsd-ptrace.h"
-#include "nat/netbsd-procfs.h"
-#include "nat/netbsd-personality.h"
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
@@ -41,7 +39,6 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <sys/vfs.h>
 #include <sys/uio.h>
 #include "common/filestuff.h"
 #include "tracepoint.h"
@@ -58,7 +55,6 @@
    definition of elf_fpregset_t.  */
 #include <elf.h>
 #endif
-#include "nat/netbsd-namespaces.h"
 
 #ifndef SPUFS_MAGIC
 #define SPUFS_MAGIC 0x23c9b64e
