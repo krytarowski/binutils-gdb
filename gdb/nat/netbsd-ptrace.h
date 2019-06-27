@@ -40,14 +40,8 @@ extern std::string netbsd_ptrace_attach_fail_reason_string (ptid_t ptid, int err
 
 extern void netbsd_ptrace_init_warnings (void);
 extern void netbsd_check_ptrace_features (void);
-extern void netbsd_enable_event_reporting (pid_t pid, int attached);
+extern void netbsd_enable_event_reporting (pid_t pid);
 extern void netbsd_disable_event_reporting (pid_t pid);
-extern int netbsd_supports_tracefork (void);
-extern int netbsd_supports_traceexec (void);
-extern int netbsd_supports_traceclone (void);
-extern int netbsd_supports_tracevforkdone (void);
-extern int netbsd_supports_tracesysgood (void);
-extern int netbsd_ptrace_get_extended_event (int wstat);
 extern int netbsd_is_extended_waitstatus (int wstat);
 extern int netbsd_wstatus_maybe_breakpoint (int wstat);
 

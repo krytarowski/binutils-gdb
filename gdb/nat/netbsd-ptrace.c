@@ -21,6 +21,8 @@
 #include "netbsd-waitpid.h"
 #include "common/buffer.h"
 
+#include <signal.h>
+
 /* Kill CHILD.  WHO is used to report warnings.  */
 
 static void
@@ -129,170 +131,26 @@ netbsd_child_function (void *child_stack)
   _exit (0);
 }
 
-static void netbsd_test_for_tracesysgood (int child_pid);
-static void netbsd_test_for_tracefork (int child_pid);
-static void netbsd_test_for_exitkill (int child_pid);
-
-/* Determine ptrace features available on this target.  */
-
-void
-netbsd_check_ptrace_features (void)
-{
-  int child_pid, ret, status;
-
-  /* Initialize the options.  */
-  supported_ptrace_options = 0;
-
-  /* Fork a child so we can do some testing.  The child will call
-     netbsd_child_function and will get traced.  The child will
-     eventually fork a grandchild so we can test fork event
-     reporting.  */
-  child_pid = netbsd_fork_to_function (NULL, netbsd_child_function);
-
-  ret = my_waitpid (child_pid, &status, 0);
-  if (ret == -1)
-    perror_with_name (("waitpid"));
-  else if (ret != child_pid)
-    error (_("netbsd_check_ptrace_features: waitpid: unexpected result %d."),
-	   ret);
-  if (! WIFSTOPPED (status))
-    error (_("netbsd_check_ptrace_features: waitpid: unexpected status %d."),
-	   status);
-
-  netbsd_test_for_tracesysgood (child_pid);
-
-  netbsd_test_for_tracefork (child_pid);
-
-  netbsd_test_for_exitkill (child_pid);
-
-  /* Kill child_pid.  */
-  kill_child (child_pid, "netbsd_check_ptrace_features");
-}
-
-/* Determine if PTRACE_O_TRACESYSGOOD can be used to catch
-   syscalls.  */
-
-static void
-netbsd_test_for_tracesysgood (int child_pid)
-{
-  int ret;
-
-  ret = ptrace (PTRACE_SETOPTIONS, child_pid, (PTRACE_TYPE_ARG3) 0,
-		(PTRACE_TYPE_ARG4) PTRACE_O_TRACESYSGOOD);
-
-  if (ret == 0)
-    supported_ptrace_options |= PTRACE_O_TRACESYSGOOD;
-}
-
-/* Determine if PTRACE_O_TRACEFORK can be used to follow fork
-   events.  */
-
-static void
-netbsd_test_for_tracefork (int child_pid)
-{
-  int ret, status;
-  long second_pid;
-
-  /* First, set the PTRACE_O_TRACEFORK option.  If this fails, we
-     know for sure that it is not supported.  */
-  ret = ptrace (PTRACE_SETOPTIONS, child_pid, (PTRACE_TYPE_ARG3) 0,
-		(PTRACE_TYPE_ARG4) PTRACE_O_TRACEFORK);
-
-  if (ret != 0)
-    return;
-
-  /* Check if the target supports PTRACE_O_TRACEVFORKDONE.  */
-  ret = ptrace (PTRACE_SETOPTIONS, child_pid, (PTRACE_TYPE_ARG3) 0,
-		(PTRACE_TYPE_ARG4) (PTRACE_O_TRACEFORK
-				    | PTRACE_O_TRACEVFORKDONE));
-  if (ret == 0)
-    supported_ptrace_options |= PTRACE_O_TRACEVFORKDONE;
-
-  /* Setting PTRACE_O_TRACEFORK did not cause an error, however we
-     don't know for sure that the feature is available; old
-     versions of PTRACE_SETOPTIONS ignored unknown options.
-     Therefore, we attach to the child process, use PTRACE_SETOPTIONS
-     to enable fork tracing, and let it fork.  If the process exits,
-     we assume that we can't use PTRACE_O_TRACEFORK; if we get the
-     fork notification, and we can extract the new child's PID, then
-     we assume that we can.
-
-     We do not explicitly check for vfork tracing here.  It is
-     assumed that vfork tracing is available whenever fork tracing
-     is available.  */
-  ret = ptrace (PTRACE_CONT, child_pid, (PTRACE_TYPE_ARG3) 0,
-		(PTRACE_TYPE_ARG4) 0);
-  if (ret != 0)
-    warning (_("netbsd_test_for_tracefork: failed to resume child"));
-
-  ret = my_waitpid (child_pid, &status, 0);
-
-  /* Check if we received a fork event notification.  */
-  if (ret == child_pid && WIFSTOPPED (status)
-      && netbsd_ptrace_get_extended_event (status) == PTRACE_EVENT_FORK)
-    {
-      /* We did receive a fork event notification.  Make sure its PID
-	 is reported.  */
-      second_pid = 0;
-      ret = ptrace (PTRACE_GETEVENTMSG, child_pid, (PTRACE_TYPE_ARG3) 0,
-		    (PTRACE_TYPE_ARG4) &second_pid);
-      if (ret == 0 && second_pid != 0)
-	{
-	  int second_status;
-
-	  /* We got the PID from the grandchild, which means fork
-	     tracing is supported.  */
-	  supported_ptrace_options |= PTRACE_O_TRACECLONE;
-	  supported_ptrace_options |= (PTRACE_O_TRACEFORK
-				       | PTRACE_O_TRACEVFORK
-				       | PTRACE_O_TRACEEXEC);
-
-	  /* Do some cleanup and kill the grandchild.  */
-	  my_waitpid (second_pid, &second_status, 0);
-	  kill_child (second_pid, "netbsd_test_for_tracefork");
-	}
-    }
-  else
-    warning (_("netbsd_test_for_tracefork: unexpected result from waitpid "
-	     "(%d, status 0x%x)"), ret, status);
-}
-
-/* Determine if PTRACE_O_EXITKILL can be used.  */
-
-static void
-netbsd_test_for_exitkill (int child_pid)
-{
-  int ret;
-
-  ret = ptrace (PTRACE_SETOPTIONS, child_pid, (PTRACE_TYPE_ARG3) 0,
-		(PTRACE_TYPE_ARG4) PTRACE_O_EXITKILL);
-
-  if (ret == 0)
-    supported_ptrace_options |= PTRACE_O_EXITKILL;
-}
-
 /* Enable reporting of all currently supported ptrace events.
    OPTIONS is a bit mask of extended features we want enabled,
    if supported by the kernel.  PTRACE_O_TRACECLONE is always
    enabled, if supported.  */
 
 void
-netbsd_enable_event_reporting (pid_t pid, int options)
+netbsd_enable_event_reporting (pid_t pid)
 {
-  /* Check if we have initialized the ptrace features for this
-     target.  If not, do it now.  */
-  if (supported_ptrace_options == -1)
-    netbsd_check_ptrace_features ();
+  ptrace_event_t event;
 
-  /* We always want clone events.  */
-  options |= PTRACE_O_TRACECLONE;
+  ptrace (PT_GET_EVENT_MASK, pid, &event, sizeof(event));
 
-  /* Filter out unsupported options.  */
-  options &= supported_ptrace_options;
+  event.pe_set_event |= PTRACE_FORK;
+  event.pe_set_event |= PTRACE_VFORK;
+  event.pe_set_event |= PTRACE_VFORK_DONE;
+  event.pe_set_event |= PTRACE_LWP_CREATE;
+  event.pe_set_event |= PTRACE_LWP_EXIT;
+  event.pe_set_event |= PTRACE_POSIX_SPAWN;
 
-  /* Set the options.  */
-  ptrace (PTRACE_SETOPTIONS, pid, (PTRACE_TYPE_ARG3) 0,
-	  (PTRACE_TYPE_ARG4) (uintptr_t) options);
+  ptrace (PT_SET_EVENT_MASK, pid, &event, sizeof(event));
 }
 
 /* Disable reporting of all currently supported ptrace events.  */
