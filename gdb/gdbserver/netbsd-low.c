@@ -50,6 +50,8 @@
 #include "common/scoped_restore.h"
 #include <elf.h>
 
+static int debug_nbsd_lwp = 0;
+
 /* LWP accessors.  */
 
 /* See nat/netbsd-nat.h.  */
