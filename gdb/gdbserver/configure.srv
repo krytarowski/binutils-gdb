@@ -401,13 +401,11 @@ case "${target}" in
 			ipa_obj="linux-amd64-ipa.o linux-x86-tdesc-ipa.o"
 			ipa_obj="${ipa_obj} arch/amd64-ipa.o"
 			;;
-  x86_64-*-netbsd*)	srv_regobj="$srv_amd64_nbsd_regobj $srv_i386_nbsd_regobj"
-			srv_tgtobj="$srv_nbsd_obj netbsd-x86-low.o x86-low.o x86-dregs.o i387-fp.o"
+  x86_64-*-netbsd*)	srv_regobj="$srv_amd64_netbsd_regobj $srv_i386_netbsd_regobj"
+			srv_tgtobj="$srv_netbsd_obj netbsd-x86-low.o x86-low.o x86-dregs.o i387-fp.o"
 			srv_tgtobj="${srv_tgtobj} arch/i386.o arch/amd64.o"
 			srv_tgtobj="${srv_tgtobj} x86-netbsd.o"
 			srv_tgtobj="${srv_tgtobj} x86-netbsd-dregs.o"
-			srv_nbsd_usrregs=yes # This is for i386 progs.
-			srv_nbsd_regsets=yes
 			;;
   x86_64-*-mingw*)	srv_regobj=""
 			srv_tgtobj="x86-low.o x86-dregs.o i387-fp.o win32-low.o win32-i386-low.o"
