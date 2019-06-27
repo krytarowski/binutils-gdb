@@ -758,6 +758,7 @@ union socket_addr
 static void
 print_sockets (unsigned short family, int tcp, struct buffer *buffer)
 {
+#if 0
   const char *proc_file;
 
   if (family == AF_INET)
@@ -882,6 +883,7 @@ print_sockets (unsigned short family, int tcp, struct buffer *buffer)
 	}
       while (!feof (fp.get ()));
     }
+#endif
 }
 
 /* Collect data about internet sockets and write it into BUFFER.  */

@@ -18,7 +18,6 @@
 
 #include "common/common-defs.h"
 #include "netbsd-ptrace.h"
-#include "netbsd-procfs.h"
 #include "netbsd-waitpid.h"
 #include "common/buffer.h"
 
@@ -70,7 +69,6 @@ netbsd_ptrace_attach_fail_reason_string (ptid_t ptid, int err)
 /* Address of the 'ret' instruction in asm code block below.  */
 EXTERN_C void netbsd_ptrace_test_ret_to_nx_instr (void);
 
-#include <sys/reg.h>
 #include <sys/mman.h>
 #include <signal.h>
 
