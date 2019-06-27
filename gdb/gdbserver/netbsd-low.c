@@ -103,19 +103,11 @@ lwp_is_stepping (struct lwp_info *lwp)
 
 /* True if we're presently stabilizing threads (moving them out of
    jump pads).  */
-static void netbsd_resume_one_lwp (struct lwp_info *lwp,
-				  int step, int signal, siginfo_t *info);
 static void netbsd_resume (struct thread_resume *resume_info, size_t n);
-static void stop_all_lwps (int suspend, struct lwp_info *except);
-static void unstop_all_lwps (int unsuspend, struct lwp_info *except);
-static void unsuspend_all_lwps (struct lwp_info *except);
-static int netbsd_wait_for_event_filtered (ptid_t wait_ptid, ptid_t filter_ptid,
-					  int *wstat, int options);
 static int netbsd_wait_for_event (ptid_t ptid, int *wstat, int options);
 static struct lwp_info *add_lwp (ptid_t ptid);
 static void netbsd_mourn (struct process_info *process);
 static int netbsd_stopped_by_watchpoint (void);
-static void mark_lwp_dead (struct lwp_info *lwp, int wstat);
 static int lwp_is_marked_dead (struct lwp_info *lwp);
 static int finish_step_over (struct lwp_info *lwp);
 static int kill_lwp (unsigned long lwpid, int signo);
@@ -1621,19 +1613,6 @@ proceed_one_lwp (thread_info *thread, lwp_info *except)
   netbsd_resume_one_lwp (lwp, step, 0, NULL);
 }
 
-static void
-unsuspend_and_proceed_one_lwp (thread_info *thread, lwp_info *except)
-{
-  struct lwp_info *lwp = get_thread_lwp (thread);
-
-  if (lwp == except)
-    return;
-
-  lwp_suspended_decr (lwp);
-
-  proceed_one_lwp (thread, except);
-}
-
 /* When we finish a step-over, set threads running again.  If there's
    another thread that may need a step-over, now's the time to start
    it.  Eventually, we'll move all threads past their breakpoints.  */
@@ -1846,14 +1825,6 @@ usr_store_inferior_registers (const struct regs_info *regs_info,
   else
     store_register (usr, regcache, regno);
 }
-
-#else /* !HAVE_NETBSD_USRREGS */
-
-#define usr_fetch_inferior_registers(regs_info, regcache, regno, all) do {} while (0)
-#define usr_store_inferior_registers(regs_info, regcache, regno, all) do {} while (0)
-
-#endif
-
 
 static void
 netbsd_fetch_registers (struct regcache *regcache, int regno)
@@ -2247,53 +2218,6 @@ netbsd_stopped_data_address (void)
 
   return lwp->stopped_data_address;
 }
-
-#if defined(__UCLIBC__) && defined(HAS_NOMMU)	      \
-    && defined(PT_TEXT_ADDR) && defined(PT_DATA_ADDR) \
-    && defined(PT_TEXT_END_ADDR)
-
-/* This is only used for targets that define PT_TEXT_ADDR,
-   PT_DATA_ADDR and PT_TEXT_END_ADDR.  If those are not defined, supposedly
-   the target has different ways of acquiring this information, like
-   loadmaps.  */
-
-/* Under uCnetbsd, programs are loaded at non-zero offsets, which we need
-   to tell gdb about.  */
-
-static int
-netbsd_read_offsets (CORE_ADDR *text_p, CORE_ADDR *data_p)
-{
-  unsigned long text, text_end, data;
-  int pid = lwpid_of (current_thread);
-
-  errno = 0;
-
-  text = ptrace (PTRACE_PEEKUSER, pid, (PTRACE_TYPE_ARG3) PT_TEXT_ADDR,
-		 (PTRACE_TYPE_ARG4) 0);
-  text_end = ptrace (PTRACE_PEEKUSER, pid, (PTRACE_TYPE_ARG3) PT_TEXT_END_ADDR,
-		     (PTRACE_TYPE_ARG4) 0);
-  data = ptrace (PTRACE_PEEKUSER, pid, (PTRACE_TYPE_ARG3) PT_DATA_ADDR,
-		 (PTRACE_TYPE_ARG4) 0);
-
-  if (errno == 0)
-    {
-      /* Both text and data offsets produced at compile-time (and so
-	 used by gdb) are relative to the beginning of the program,
-	 with the data segment immediately following the text segment.
-	 However, the actual runtime layout in memory may put the data
-	 somewhere else, so when we send gdb a data base-address, we
-	 use the real data base address and subtract the compile-time
-	 data base-address from it (which is just the length of the
-	 text segment).  BSS immediately follows data in both
-	 cases.  */
-      *text_p = text;
-      *data_p = data - (text_end - text);
-
-      return 1;
-    }
- return 0;
-}
-#endif
 
 static int
 netbsd_qxfer_osdata (const char *annex,
