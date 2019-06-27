@@ -1779,86 +1779,25 @@ netbsd_store_registers (struct regcache *regcache, int regno)
 static int
 netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
 {
-  int pid = lwpid_of (current_thread);
-  PTRACE_XFER_TYPE *buffer;
-  CORE_ADDR addr;
-  int count;
-  char filename[64];
-  int i;
-  int ret;
-  int fd;
+  unsigned char *dst = myaddr;
+  struct ptrace_io_desc io;
 
-  /* Try using /proc.  Don't bother for one word.  */
-  if (len >= 3 * sizeof (long))
-    {
-      int bytes;
+  int bytes_read = 0;
+  io.piod_op = PIOD_READ_D;
+  io.piod_len = len;
 
-      /* We could keep this file open and cache it - possibly one per
-	 thread.  That requires some juggling, but is even faster.  */
-      sprintf (filename, "/proc/%d/mem", pid);
-      fd = open (filename, O_RDONLY | O_LARGEFILE);
-      if (fd == -1)
-	goto no_proc;
+  do {
+    io.piod_offs = (void *)((char *)memaddr + bytes_read);
+    io.piod_addr = dst + bytes_read;
 
-      /* If pread64 is available, use it.  It's faster if the kernel
-	 supports it (only one syscall), and it's 64-bit safe even on
-	 32-bit platforms (for instance, SPARC debugging a SPARC64
-	 application).  */
-#ifdef HAVE_PREAD64
-      bytes = pread64 (fd, myaddr, len, memaddr);
-#else
-      bytes = -1;
-      if (lseek (fd, memaddr, SEEK_SET) != -1)
-	bytes = read (fd, myaddr, len);
-#endif
+    int error = ptrace(PT_IO, current_ptid.pid (), &io, 0);
+    if (error == -1 || io.piod_len == 0)
+      return error;
+    bytes_read += io.piod_len;
+    io.piod_len = size - bytes_read;
+  } while (bytes_read < size);
 
-      close (fd);
-      if (bytes == len)
-	return 0;
-
-      /* Some data was read, we'll try to get the rest with ptrace.  */
-      if (bytes > 0)
-	{
-	  memaddr += bytes;
-	  myaddr += bytes;
-	  len -= bytes;
-	}
-    }
-
- no_proc:
-  /* Round starting address down to longword boundary.  */
-  addr = memaddr & -(CORE_ADDR) sizeof (PTRACE_XFER_TYPE);
-  /* Round ending address up; get number of longwords that makes.  */
-  count = ((((memaddr + len) - addr) + sizeof (PTRACE_XFER_TYPE) - 1)
-	   / sizeof (PTRACE_XFER_TYPE));
-  /* Allocate buffer of that many longwords.  */
-  buffer = XALLOCAVEC (PTRACE_XFER_TYPE, count);
-
-  /* Read all the longwords */
-  errno = 0;
-  for (i = 0; i < count; i++, addr += sizeof (PTRACE_XFER_TYPE))
-    {
-      /* Coerce the 3rd arg to a uintptr_t first to avoid potential gcc warning
-	 about coercing an 8 byte integer to a 4 byte pointer.  */
-      buffer[i] = ptrace (PTRACE_PEEKTEXT, pid,
-			  (PTRACE_TYPE_ARG3) (uintptr_t) addr,
-			  (PTRACE_TYPE_ARG4) 0);
-      if (errno)
-	break;
-    }
-  ret = errno;
-
-  /* Copy appropriate bytes out of the buffer.  */
-  if (i > 0)
-    {
-      i *= sizeof (PTRACE_XFER_TYPE);
-      i -= memaddr & (sizeof (PTRACE_XFER_TYPE) - 1);
-      memcpy (myaddr,
-	      (char *) buffer + (memaddr & (sizeof (PTRACE_XFER_TYPE) - 1)),
-	      i < len ? i : len);
-    }
-
-  return ret;
+  return 0;
 }
 
 /* Copy LEN bytes of data from debugger memory at MYADDR to inferior's
