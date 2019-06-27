@@ -103,19 +103,13 @@ lwp_is_stepping (struct lwp_info *lwp)
   return lwp->stepping;
 }
 
-/* True if we're presently stabilizing threads (moving them out of
-   jump pads).  */
 static void netbsd_resume (struct thread_resume *resume_info, size_t n);
-static int netbsd_wait_for_event (ptid_t ptid, int *wstat, int options);
 static struct lwp_info *add_lwp (ptid_t ptid);
 static void netbsd_mourn (struct process_info *process);
 static int netbsd_stopped_by_watchpoint (void);
 static int lwp_is_marked_dead (struct lwp_info *lwp);
 static int finish_step_over (struct lwp_info *lwp);
 static int kill_lwp (unsigned long lwpid, int signo);
-static void enqueue_pending_signal (struct lwp_info *lwp, int signal, siginfo_t *info);
-static void complete_ongoing_step_over (void);
-static int netbsd_low_ptrace_options (int attached);
 static int check_ptrace_stopped_lwp_gone (struct lwp_info *lp);
 static void proceed_one_lwp (thread_info *thread, lwp_info *except);
 
@@ -582,23 +576,6 @@ lwp_suspended_inc (struct lwp_info *lwp)
 
       debug_printf ("LWP %ld has a suspiciously high suspend count,"
 		    " suspended=%d\n", lwpid_of (thread), lwp->suspended);
-    }
-}
-
-/* Decrement LWP's suspend count.  */
-
-static void
-lwp_suspended_decr (struct lwp_info *lwp)
-{
-  lwp->suspended--;
-
-  if (lwp->suspended < 0)
-    {
-      struct thread_info *thread = get_lwp_thread (lwp);
-
-      internal_error (__FILE__, __LINE__,
-		      "unsuspend LWP %ld, suspended=%d\n", lwpid_of (thread),
-		      lwp->suspended);
     }
 }
 
@@ -1372,48 +1349,6 @@ start_step_over (struct lwp_info *lwp)
   return 1;
 }
 
-/* Finish a step-over.  Reinsert the breakpoint we had uninserted in
-   start_step_over, if still there, and delete any single-step
-   breakpoints we've set, on non hardware single-step targets.  */
-
-static int
-finish_step_over (struct lwp_info *lwp)
-{
-  if (lwp->bp_reinsert != 0)
-    {
-      struct thread_info *saved_thread = current_thread;
-
-      if (debug_threads)
-	debug_printf ("Finished step over.\n");
-
-      current_thread = get_lwp_thread (lwp);
-
-      /* Reinsert any breakpoint at LWP->BP_REINSERT.  Note that there
-	 may be no breakpoint to reinsert there by now.  */
-      reinsert_breakpoints_at (lwp->bp_reinsert);
-      reinsert_fast_tracepoint_jumps_at (lwp->bp_reinsert);
-
-      lwp->bp_reinsert = 0;
-
-      /* Delete any single-step breakpoints.  No longer needed.  We
-	 don't have to worry about other threads hitting this trap,
-	 and later not being able to explain it, because we were
-	 stepping over a breakpoint, and we hold all threads but
-	 LWP stopped while doing that.  */
-      if (!can_hardware_single_step ())
-	{
-	  gdb_assert (has_single_step_breakpoints (current_thread));
-	  delete_single_step_breakpoints (current_thread);
-	}
-
-      step_over_bkpt = null_ptid;
-      current_thread = saved_thread;
-      return 1;
-    }
-  else
-    return 0;
-}
-
 static void
 netbsd_resume (struct thread_resume *resume_info, size_t n)
 {
@@ -1588,45 +1523,6 @@ proceed_one_lwp (thread_info *thread, lwp_info *except)
     step = 0;
 
   netbsd_resume_one_lwp (lwp, step, 0, NULL);
-}
-
-/* When we finish a step-over, set threads running again.  If there's
-   another thread that may need a step-over, now's the time to start
-   it.  Eventually, we'll move all threads past their breakpoints.  */
-
-static void
-proceed_all_lwps (void)
-{
-  struct thread_info *need_step_over;
-
-  /* If there is a thread which would otherwise be resumed, which is
-     stopped at a breakpoint that needs stepping over, then don't
-     resume any threads - have it step over the breakpoint with all
-     other threads stopped, then resume all threads again.  */
-
-  if (supports_breakpoints ())
-    {
-      need_step_over = find_thread (need_step_over_p);
-
-      if (need_step_over != NULL)
-	{
-	  if (debug_threads)
-	    debug_printf ("proceed_all_lwps: found "
-			  "thread %ld needing a step-over\n",
-			  lwpid_of (need_step_over));
-
-	  start_step_over (get_thread_lwp (need_step_over));
-	  return;
-	}
-    }
-
-  if (debug_threads)
-    debug_printf ("Proceeding, no step-over needed\n");
-
-  for_each_thread ([] (thread_info *thread)
-    {
-      proceed_one_lwp (thread, NULL);
-    });
 }
 
 /* Return 1 if register REGNO is supported by one of the regset ptrace
