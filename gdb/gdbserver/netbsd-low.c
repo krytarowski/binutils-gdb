@@ -491,7 +491,7 @@ netbsd_create_inferior (const char *program,
 static void
 netbsd_post_create_inferior (void)
 {
-  pid_t pid = inferior_ptid.pid ();
+  pid_t pid = current_ptid.pid ();
 
   netbsd_enable_event_reporting (pid);
 }
