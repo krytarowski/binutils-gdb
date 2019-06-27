@@ -610,16 +610,16 @@ netbsd_wait (ptid_t ptid,
    *
    * Polling on traced parent always simplifies the code.
    */
-  ptid = inferior_ptid;
+  ptid = current_ptid;
 
   if (debug_nbsd_lwp)
-    fprintf_unfiltered (gdb_stdlog, "NLWP: calling super_wait (%d, %ld, %ld) target_options=%#x\n",
+    debug_printf ("NLWP: calling super_wait (%d, %ld, %ld) target_options=%#x\n",
                         ptid.pid (), ptid.lwp (), ptid.tid (), target_options);
 
   wptid = inf_ptrace_target::wait (ptid, ourstatus, target_options);
 
   if (debug_nbsd_lwp)
-    fprintf_unfiltered (gdb_stdlog, "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
+    debug_printf ( "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
                         ptid.pid (), ptid.lwp (), ptid.tid (),
 			target_options, ourstatus->kind);
 
@@ -650,14 +650,14 @@ netbsd_wait (ptid_t ptid,
       /* Set LWP in the process */
       if (in_thread_list (ptid_t (pid))) {
           if (debug_nbsd_lwp)
-            fprintf_unfiltered (gdb_stdlog,
+            debug_printf (
                                 "NLWP: using LWP %d for first thread\n",
                                 lwp);
           thread_change_ptid (ptid_t (pid), wptid);                                                                                                 
       }
 
       if (debug_nbsd_lwp)
-         fprintf_unfiltered (gdb_stdlog,
+         debug_printf (
                              "NLWP: received signal=%d si_code=%d in process=%d lwp=%d\n",
                              psi.psi_siginfo.si_signo, psi.psi_siginfo.si_code, pid, lwp);
 
@@ -702,7 +702,7 @@ netbsd_wait (ptid_t ptid,
             child = pst.pe_other_pid;
 
             if (debug_nbsd_lwp)
-              fprintf_unfiltered (gdb_stdlog,
+              debug_printf (
                                   "NLWP: registered %s event for PID %d\n",
                                   (pst.pe_report_event == PTRACE_FORK) ? "FORK" : "VFORK", child);
 
@@ -741,7 +741,7 @@ netbsd_wait (ptid_t ptid,
           case PTRACE_VFORK_DONE:
             ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
             if (debug_nbsd_lwp)
-              fprintf_unfiltered (gdb_stdlog, "NLWP: reported VFORK_DONE parent=%d child=%d\n", pid, pst.pe_other_pid);
+              debug_printf ( "NLWP: reported VFORK_DONE parent=%d child=%d\n", pid, pst.pe_other_pid);
             break;
           case PTRACE_LWP_CREATE:
             wptid = ptid_t (pid, pst.pe_lwp, 0);
@@ -753,7 +753,7 @@ netbsd_wait (ptid_t ptid,
             add_thread (wptid);
             ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
             if (debug_nbsd_lwp)
-              fprintf_unfiltered (gdb_stdlog, "NLWP: created LWP %d\n", pst.pe_lwp);
+              debug_printf ( "NLWP: created LWP %d\n", pst.pe_lwp);
             break;
           case PTRACE_LWP_EXIT:
             wptid = ptid_t (pid, pst.pe_lwp, 0);
@@ -765,7 +765,7 @@ netbsd_wait (ptid_t ptid,
             delete_thread (find_thread_ptid (wptid));
             ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
             if (debug_nbsd_lwp)
-              fprintf_unfiltered (gdb_stdlog, "NLWP: exited LWP %d\n", pst.pe_lwp);
+              debug_printf ( "NLWP: exited LWP %d\n", pst.pe_lwp);
             if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
               perror_with_name (("ptrace"));
             break;
@@ -776,7 +776,7 @@ netbsd_wait (ptid_t ptid,
       }
 
       if (debug_nbsd_lwp)
-	fprintf_unfiltered (gdb_stdlog,
+	debug_printf (
 		"NLWP: nbsd_wait returned (%d, %ld, %ld)\n",
 		wptid.pid (), wptid.lwp (),
 		wptid.tid ());
