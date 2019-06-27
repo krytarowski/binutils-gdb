@@ -3959,84 +3959,6 @@ netbsd_qxfer_spu (const char *annex, unsigned char *readbuf,
   return ret;
 }
 
-#if defined PT_GETDSBT || defined PTRACE_GETFDPIC
-struct target_loadseg
-{
-  /* Core address to which the segment is mapped.  */
-  Elf32_Addr addr;
-  /* VMA recorded in the program header.  */
-  Elf32_Addr p_vaddr;
-  /* Size of this segment in memory.  */
-  Elf32_Word p_memsz;
-};
-
-# if defined PT_GETDSBT
-struct target_loadmap
-{
-  /* Protocol version number, must be zero.  */
-  Elf32_Word version;
-  /* Pointer to the DSBT table, its size, and the DSBT index.  */
-  unsigned *dsbt_table;
-  unsigned dsbt_size, dsbt_index;
-  /* Number of segments in this map.  */
-  Elf32_Word nsegs;
-  /* The actual memory map.  */
-  struct target_loadseg segs[/*nsegs*/];
-};
-#  define NETBSD_LOADMAP		PT_GETDSBT
-#  define NETBSD_LOADMAP_EXEC	PTRACE_GETDSBT_EXEC
-#  define NETBSD_LOADMAP_INTERP	PTRACE_GETDSBT_INTERP
-# else
-struct target_loadmap
-{
-  /* Protocol version number, must be zero.  */
-  Elf32_Half version;
-  /* Number of segments in this map.  */
-  Elf32_Half nsegs;
-  /* The actual memory map.  */
-  struct target_loadseg segs[/*nsegs*/];
-};
-#  define NETBSD_LOADMAP		PTRACE_GETFDPIC
-#  define NETBSD_LOADMAP_EXEC	PTRACE_GETFDPIC_EXEC
-#  define NETBSD_LOADMAP_INTERP	PTRACE_GETFDPIC_INTERP
-# endif
-
-static int
-netbsd_read_loadmap (const char *annex, CORE_ADDR offset,
-		    unsigned char *myaddr, unsigned int len)
-{
-  int pid = lwpid_of (current_thread);
-  int addr = -1;
-  struct target_loadmap *data = NULL;
-  unsigned int actual_length, copy_length;
-
-  if (strcmp (annex, "exec") == 0)
-    addr = (int) NETBSD_LOADMAP_EXEC;
-  else if (strcmp (annex, "interp") == 0)
-    addr = (int) NETBSD_LOADMAP_INTERP;
-  else
-    return -1;
-
-  if (ptrace (NETBSD_LOADMAP, pid, addr, &data) != 0)
-    return -1;
-
-  if (data == NULL)
-    return -1;
-
-  actual_length = sizeof (struct target_loadmap)
-    + sizeof (struct target_loadseg) * data->nsegs;
-
-  if (offset < 0 || offset > actual_length)
-    return -1;
-
-  copy_length = actual_length - offset < len ? actual_length - offset : len;
-  memcpy (myaddr, (char *) data + offset, copy_length);
-  return copy_length;
-}
-#else
-# define netbsd_read_loadmap NULL
-#endif /* defined PT_GETDSBT || defined PTRACE_GETFDPIC */
-
 static void
 netbsd_process_qsupported (char **features, int count)
 {
@@ -4047,8 +3969,8 @@ netbsd_process_qsupported (char **features, int count)
 static int
 netbsd_supports_catch_syscall (void)
 {
-  return (the_low_target.get_syscall_trapinfo != NULL
-	  && netbsd_supports_tracesysgood ());
+
+  return 1;
 }
 
 static int
@@ -5038,17 +4960,10 @@ static struct target_ops netbsd_target_ops = {
   netbsd_get_min_fast_tracepoint_insn_len,
   netbsd_qxfer_libraries_svr4,
   netbsd_supports_agent,
-#ifdef HAVE_NETBSD_BTRACE
-  netbsd_enable_btrace,
-  netbsd_low_disable_btrace,
-  netbsd_low_read_btrace,
-  netbsd_low_btrace_conf,
-#else
   NULL,
   NULL,
   NULL,
   NULL,
-#endif
   netbsd_supports_range_stepping,
   netbsd_proc_pid_to_exec_file,
   netbsd_mntns_open_cloexec,
@@ -5060,12 +4975,8 @@ static struct target_ops netbsd_target_ops = {
   netbsd_breakpoint_kind_from_current_state,
   netbsd_supports_software_single_step,
   netbsd_supports_catch_syscall,
-  netbsd_get_ipa_tdesc_idx,
-#if USE_THREAD_DB
-  thread_db_thread_handle,
-#else
   NULL,
-#endif
+  NULL,
 };
 
 #ifdef HAVE_NETBSD_REGSETS
