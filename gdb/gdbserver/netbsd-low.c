@@ -787,6 +787,22 @@ netbsd_wait (ptid_t ptid,
     return wptid;
 }
 
+static void
+nbsd_add_threads (pid_t pid)
+{
+  int val;
+  struct ptrace_lwpinfo pl;
+
+  pl.pl_lwpid = 0;
+  while ((val = ptrace (PT_LWPINFO, pid, (void *)&pl, sizeof(pl))) != -1
+    && pl.pl_lwpid != 0)
+    {
+      ptid_t ptid = ptid_t (pid, pl.pl_lwpid, 0);
+      if (!in_thread_list (ptid))
+        add_thread (ptid);
+    }
+}
+
 /* Send a signal to an LWP.  */
 
 static int
