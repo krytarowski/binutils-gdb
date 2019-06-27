@@ -401,8 +401,8 @@ handle_extended_wait (struct lwp_info **orig_event_lwp, int wstat)
      you have to be using PTRACE_SEIZE to get that.  */
   event_lwp->syscall_state = TARGET_WAITKIND_SYSCALL_ENTRY;
 
-  if ((event == PTRACE_EVENT_FORK) || (event == PTRACE_EVENT_VFORK)
-      || (event == PTRACE_EVENT_CLONE))
+  if ((event == PTRACE_FORK) || (event == PTRACE_VFORK)
+      || (event == PTRACE_POSIX_SPAWN))
     {
       ptid_t ptid;
       unsigned long new_pid;
@@ -428,7 +428,7 @@ handle_extended_wait (struct lwp_info **orig_event_lwp, int wstat)
 	    warning ("wait returned unexpected status 0x%x", status);
 	}
 
-      if (event == PTRACE_EVENT_FORK || event == PTRACE_EVENT_VFORK)
+      if (event == PTRACE_FORK || event == PTRACE_VFORK)
 	{
 	  struct process_info *parent_proc;
 	  struct process_info *child_proc;
@@ -479,7 +479,7 @@ handle_extended_wait (struct lwp_info **orig_event_lwp, int wstat)
 
 	  if (event_lwp->bp_reinsert != 0
 	      && can_software_single_step ()
-	      && event == PTRACE_EVENT_VFORK)
+	      && event == PTRACE_VFORK)
 	    {
 	      /* If we leave single-step breakpoints there, child will
 		 hit it, so uninsert single-step breakpoints from parent
@@ -499,9 +499,9 @@ handle_extended_wait (struct lwp_info **orig_event_lwp, int wstat)
 	    the_low_target.new_fork (parent_proc, child_proc);
 
 	  /* Save fork info in the parent thread.  */
-	  if (event == PTRACE_EVENT_FORK)
+	  if (event == PTRACE_FORK)
 	    event_lwp->waitstatus.kind = TARGET_WAITKIND_FORKED;
-	  else if (event == PTRACE_EVENT_VFORK)
+	  else if (event == PTRACE_VFORK)
 	    event_lwp->waitstatus.kind = TARGET_WAITKIND_VFORKED;
 
 	  event_lwp->waitstatus.value.related_pid = ptid;
@@ -576,14 +576,10 @@ handle_extended_wait (struct lwp_info **orig_event_lwp, int wstat)
 	  new_lwp->status_pending = status;
 	}
 
-#ifdef USE_THREAD_DB
-      thread_db_notice_clone (event_thr, ptid);
-#endif
-
       /* Don't report the event.  */
       return 1;
     }
-  else if (event == PTRACE_EVENT_VFORK_DONE)
+  else if (event == PTRACE_VFORK)
     {
       event_lwp->waitstatus.kind = TARGET_WAITKIND_VFORK_DONE;
 
