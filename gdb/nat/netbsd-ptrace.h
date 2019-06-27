@@ -42,6 +42,7 @@ extern void netbsd_ptrace_init_warnings (void);
 extern void netbsd_check_ptrace_features (void);
 extern void netbsd_enable_event_reporting (pid_t pid);
 extern void netbsd_disable_event_reporting (pid_t pid);
+extern int netbsd_ptrace_get_extended_event (int wstat);
 extern int netbsd_is_extended_waitstatus (int wstat);
 extern int netbsd_wstatus_maybe_breakpoint (int wstat);
 
