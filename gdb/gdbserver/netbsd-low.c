@@ -640,7 +640,7 @@ netbsd_wait (ptid_t ptid,
       /* For whole-process signals pick random thread */
       if (psi.psi_lwpid == 0) {
         // XXX: Is this always valid?
-        lwp = inferior_ptid.lwp ();
+        lwp = lwpid_of (current_thread);
       } else {
         lwp = psi.psi_lwpid;
       }
