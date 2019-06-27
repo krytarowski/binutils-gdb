@@ -161,37 +161,6 @@ supports_breakpoints (void)
   return (the_low_target.get_pc != NULL);
 }
 
-/* Returns true if this target can support fast tracepoints.  This
-   does not mean that the in-process agent has been loaded in the
-   inferior.  */
-
-static int
-supports_fast_tracepoints (void)
-{
-  return the_low_target.install_fast_tracepoint_jump_pad != NULL;
-}
-
-/* True if LWP is stopped in its stepping range.  */
-
-static int
-lwp_in_step_range (struct lwp_info *lwp)
-{
-  CORE_ADDR pc = lwp->stop_pc;
-
-  return (pc >= lwp->step_range_start && pc < lwp->step_range_end);
-}
-
-struct pending_signals
-{
-  int signal;
-  siginfo_t info;
-  struct pending_signals *prev;
-};
-
-/* The read/write ends of the pipe registered as waitable file in the
-   event loop.  */
-static int netbsd_event_pipe[2] = { -1, -1 };
-
 /* True if we're currently in async mode.  */
 #define target_is_async_p() (netbsd_event_pipe[0] != -1)
 
@@ -632,21 +601,6 @@ find_lwp_pid (ptid_t ptid)
     return NULL;
 
   return get_thread_lwp (thread);
-}
-
-/* Return the number of known LWPs in the tgid given by PID.  */
-
-static int
-num_lwps (int pid)
-{
-  int count = 0;
-
-  for_each_thread (pid, [&] (thread_info *thread)
-    {
-      count++;
-    });
-
-  return count;
 }
 
 /* See nat/netbsd-nat.h.  */
