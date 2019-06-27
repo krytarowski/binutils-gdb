@@ -79,7 +79,7 @@ in_thread_list (ptid_t ptid)
 #endif
 
 #define in_thread_list(a) 0 /* XXX */
-#defien thread_change_ptid(a) 0 /* XXX */
+#define thread_change_ptid(a) 0 /* XXX */
 
 static char *
 nbsd_nat_target::pid_to_exec_file (int pid)
