@@ -266,21 +266,6 @@ netbsd_arch_setup (void)
   the_low_target.arch_setup ();
 }
 
-/* Call the target arch_setup function on THREAD.  */
-
-static void
-netbsd_arch_setup_thread (struct thread_info *thread)
-{
-  struct thread_info *saved_thread;
-
-  saved_thread = current_thread;
-  current_thread = thread;
-
-  netbsd_arch_setup ();
-
-  current_thread = saved_thread;
-}
-
 /* Return the PC as read from the regcache of LWP, without any
    adjustment.  */
 
@@ -568,26 +553,6 @@ thread_still_has_status_pending_p (struct thread_info *thread)
   return 1;
 }
 
-/* Returns true if LWP is resumed from the client's perspective.  */
-
-static int
-lwp_resumed (struct lwp_info *lwp)
-{
-  struct thread_info *thread = get_lwp_thread (lwp);
-
-  if (thread->last_resume_kind != resume_stop)
-    return 1;
-
-  /* Did gdb send us a `vCont;t', but we haven't reported the
-     corresponding stop to gdb yet?  If so, the thread is still
-     resumed/running from gdb's perspective.  */
-  if (thread->last_resume_kind == resume_stop
-      && thread->last_status.kind == TARGET_WAITKIND_IGNORE)
-    return 1;
-
-  return 0;
-}
-
 struct lwp_info *
 find_lwp_pid (ptid_t ptid)
 {
@@ -653,56 +618,6 @@ lwp_suspended_decr (struct lwp_info *lwp)
 		      "unsuspend LWP %ld, suspended=%d\n", lwpid_of (thread),
 		      lwp->suspended);
     }
-}
-
-/* This function should only be called if the LWP got a SIGTRAP.
-
-   Handle any tracepoint steps or hits.  Return true if a tracepoint
-   event was handled, 0 otherwise.  */
-
-static int
-handle_tracepoints (struct lwp_info *lwp)
-{
-  struct thread_info *tinfo = get_lwp_thread (lwp);
-  int tpoint_related_event = 0;
-
-  gdb_assert (lwp->suspended == 0);
-
-  /* If this tracepoint hit causes a tracing stop, we'll immediately
-     uninsert tracepoints.  To do this, we temporarily pause all
-     threads, unpatch away, and then unpause threads.  We need to make
-     sure the unpausing doesn't resume LWP too.  */
-  lwp_suspended_inc (lwp);
-
-  /* And we need to be sure that any all-threads-stopping doesn't try
-     to move threads out of the jump pads, as it could deadlock the
-     inferior (LWP could be in the jump pad, maybe even holding the
-     lock.)  */
-
-  /* Do any necessary step collect actions.  */
-  tpoint_related_event |= tracepoint_finished_step (tinfo, lwp->stop_pc);
-
-  tpoint_related_event |= handle_tracepoint_bkpts (tinfo, lwp->stop_pc);
-
-  /* See if we just hit a tracepoint and do its main collect
-     actions.  */
-  tpoint_related_event |= tracepoint_was_hit (tinfo, lwp->stop_pc);
-
-  lwp_suspended_decr (lwp);
-
-  gdb_assert (lwp->suspended == 0);
-  gdb_assert (!stabilizing_threads
-	      || (lwp->collecting_fast_tracepoint
-		  != fast_tpoint_collect_result::not_collecting));
-
-  if (tpoint_related_event)
-    {
-      if (debug_threads)
-	debug_printf ("got a tracepoint event\n");
-      return 1;
-    }
-
-  return 0;
 }
 
 /* Fetch the possibly triggered data watchpoint info and store it in
