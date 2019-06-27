@@ -379,280 +379,6 @@ netbsd_arch_setup_thread (struct thread_info *thread)
   current_thread = saved_thread;
 }
 
-/* Handle a GNU/Linux extended wait response.  If we see a clone,
-   fork, or vfork event, we need to add the new LWP to our list
-   (and return 0 so as not to report the trap to higher layers).
-   If we see an exec event, we will modify ORIG_EVENT_LWP to point
-   to a new LWP representing the new program.  */
-
-static int
-handle_extended_wait (struct lwp_info **orig_event_lwp, int wstat)
-{
-  client_state &cs = get_client_state ();
-  struct lwp_info *event_lwp = *orig_event_lwp;
-  int event = netbsd_ptrace_get_extended_event (wstat);
-  struct thread_info *event_thr = get_lwp_thread (event_lwp);
-  struct lwp_info *new_lwp;
-
-  gdb_assert (event_lwp->waitstatus.kind == TARGET_WAITKIND_IGNORE);
-
-  /* All extended events we currently use are mid-syscall.  Only
-     PTRACE_EVENT_STOP is delivered more like a signal-stop, but
-     you have to be using PTRACE_SEIZE to get that.  */
-  event_lwp->syscall_state = TARGET_WAITKIND_SYSCALL_ENTRY;
-
-  if ((event == PTRACE_FORK) || (event == PTRACE_VFORK)
-      || (event == PTRACE_POSIX_SPAWN))
-    {
-      ptid_t ptid;
-      unsigned long new_pid;
-      int ret, status;
-
-      /* Get the pid of the new lwp.  */
-      ptrace (PTRACE_GETEVENTMSG, lwpid_of (event_thr), (PTRACE_TYPE_ARG3) 0,
-	      &new_pid);
-
-      /* If we haven't already seen the new PID stop, wait for it now.  */
-      if (!pull_pid_from_list (&stopped_pids, new_pid, &status))
-	{
-	  /* The new child has a pending SIGSTOP.  We can't affect it until it
-	     hits the SIGSTOP, but we're already attached.  */
-
-	  ret = my_waitpid (new_pid, &status, __WALL);
-
-	  if (ret == -1)
-	    perror_with_name ("waiting for new child");
-	  else if (ret != new_pid)
-	    warning ("wait returned unexpected PID %d", ret);
-	  else if (!WIFSTOPPED (status))
-	    warning ("wait returned unexpected status 0x%x", status);
-	}
-
-      if (event == PTRACE_FORK || event == PTRACE_VFORK)
-	{
-	  struct process_info *parent_proc;
-	  struct process_info *child_proc;
-	  struct lwp_info *child_lwp;
-	  struct thread_info *child_thr;
-	  struct target_desc *tdesc;
-
-	  ptid = ptid_t (new_pid, new_pid, 0);
-
-	  if (debug_threads)
-	    {
-	      debug_printf ("HEW: Got fork event from LWP %ld, "
-			    "new child is %d\n",
-			    ptid_of (event_thr).lwp (),
-			    ptid.pid ());
-	    }
-
-	  /* Add the new process to the tables and clone the breakpoint
-	     lists of the parent.  We need to do this even if the new process
-	     will be detached, since we will need the process object and the
-	     breakpoints to remove any breakpoints from memory when we
-	     detach, and the client side will access registers.  */
-	  child_proc = netbsd_add_process (new_pid, 0);
-	  gdb_assert (child_proc != NULL);
-	  child_lwp = add_lwp (ptid);
-	  gdb_assert (child_lwp != NULL);
-	  child_lwp->stopped = 1;
-	  child_lwp->must_set_ptrace_flags = 1;
-	  child_lwp->status_pending_p = 0;
-	  child_thr = get_lwp_thread (child_lwp);
-	  child_thr->last_resume_kind = resume_stop;
-	  child_thr->last_status.kind = TARGET_WAITKIND_STOPPED;
-
-	  /* If we're suspending all threads, leave this one suspended
-	     too.  If the fork/clone parent is stepping over a breakpoint,
-	     all other threads have been suspended already.  Leave the
-	     child suspended too.  */
-	  if (stopping_threads == STOPPING_AND_SUSPENDING_THREADS
-	      || event_lwp->bp_reinsert != 0)
-	    {
-	      if (debug_threads)
-		debug_printf ("HEW: leaving child suspended\n");
-	      child_lwp->suspended = 1;
-	    }
-
-	  parent_proc = get_thread_process (event_thr);
-	  child_proc->attached = parent_proc->attached;
-
-	  if (event_lwp->bp_reinsert != 0
-	      && can_software_single_step ()
-	      && event == PTRACE_VFORK)
-	    {
-	      /* If we leave single-step breakpoints there, child will
-		 hit it, so uninsert single-step breakpoints from parent
-		 (and child).  Once vfork child is done, reinsert
-		 them back to parent.  */
-	      uninsert_single_step_breakpoints (event_thr);
-	    }
-
-	  clone_all_breakpoints (child_thr, event_thr);
-
-	  tdesc = allocate_target_description ();
-	  copy_target_description (tdesc, parent_proc->tdesc);
-	  child_proc->tdesc = tdesc;
-
-	  /* Clone arch-specific process data.  */
-	  if (the_low_target.new_fork != NULL)
-	    the_low_target.new_fork (parent_proc, child_proc);
-
-	  /* Save fork info in the parent thread.  */
-	  if (event == PTRACE_FORK)
-	    event_lwp->waitstatus.kind = TARGET_WAITKIND_FORKED;
-	  else if (event == PTRACE_VFORK)
-	    event_lwp->waitstatus.kind = TARGET_WAITKIND_VFORKED;
-
-	  event_lwp->waitstatus.value.related_pid = ptid;
-
-	  /* The status_pending field contains bits denoting the
-	     extended event, so when the pending event is handled,
-	     the handler will look at lwp->waitstatus.  */
-	  event_lwp->status_pending_p = 1;
-	  event_lwp->status_pending = wstat;
-
-	  /* Link the threads until the parent event is passed on to
-	     higher layers.  */
-	  event_lwp->fork_relative = child_lwp;
-	  child_lwp->fork_relative = event_lwp;
-
-	  /* If the parent thread is doing step-over with single-step
-	     breakpoints, the list of single-step breakpoints are cloned
-	     from the parent's.  Remove them from the child process.
-	     In case of vfork, we'll reinsert them back once vforked
-	     child is done.  */
-	  if (event_lwp->bp_reinsert != 0
-	      && can_software_single_step ())
-	    {
-	      /* The child process is forked and stopped, so it is safe
-		 to access its memory without stopping all other threads
-		 from other processes.  */
-	      delete_single_step_breakpoints (child_thr);
-
-	      gdb_assert (has_single_step_breakpoints (event_thr));
-	      gdb_assert (!has_single_step_breakpoints (child_thr));
-	    }
-
-	  /* Report the event.  */
-	  return 0;
-	}
-
-      if (debug_threads)
-	debug_printf ("HEW: Got clone event "
-		      "from LWP %ld, new child is LWP %ld\n",
-		      lwpid_of (event_thr), new_pid);
-
-      ptid = ptid_t (pid_of (event_thr), new_pid, 0);
-      new_lwp = add_lwp (ptid);
-
-      /* Either we're going to immediately resume the new thread
-	 or leave it stopped.  netbsd_resume_one_lwp is a nop if it
-	 thinks the thread is currently running, so set this first
-	 before calling netbsd_resume_one_lwp.  */
-      new_lwp->stopped = 1;
-
-      /* If we're suspending all threads, leave this one suspended
-	 too.  If the fork/clone parent is stepping over a breakpoint,
-	 all other threads have been suspended already.  Leave the
-	 child suspended too.  */
-      if (stopping_threads == STOPPING_AND_SUSPENDING_THREADS
-	  || event_lwp->bp_reinsert != 0)
-	new_lwp->suspended = 1;
-
-      /* Normally we will get the pending SIGSTOP.  But in some cases
-	 we might get another signal delivered to the group first.
-	 If we do get another signal, be sure not to lose it.  */
-      if (WSTOPSIG (status) != SIGSTOP)
-	{
-	  new_lwp->stop_expected = 1;
-	  new_lwp->status_pending_p = 1;
-	  new_lwp->status_pending = status;
-	}
-      else if (cs.report_thread_events)
-	{
-	  new_lwp->waitstatus.kind = TARGET_WAITKIND_THREAD_CREATED;
-	  new_lwp->status_pending_p = 1;
-	  new_lwp->status_pending = status;
-	}
-
-      /* Don't report the event.  */
-      return 1;
-    }
-  else if (event == PTRACE_VFORK)
-    {
-      event_lwp->waitstatus.kind = TARGET_WAITKIND_VFORK_DONE;
-
-      if (event_lwp->bp_reinsert != 0 && can_software_single_step ())
-	{
-	  reinsert_single_step_breakpoints (event_thr);
-
-	  gdb_assert (has_single_step_breakpoints (event_thr));
-	}
-
-      /* Report the event.  */
-      return 0;
-    }
-  else if (event == PTRACE_EVENT_EXEC && cs.report_exec_events)
-    {
-      struct process_info *proc;
-      std::vector<int> syscalls_to_catch;
-      ptid_t event_ptid;
-      pid_t event_pid;
-
-      if (debug_threads)
-	{
-	  debug_printf ("HEW: Got exec event from LWP %ld\n",
-			lwpid_of (event_thr));
-	}
-
-      /* Get the event ptid.  */
-      event_ptid = ptid_of (event_thr);
-      event_pid = event_ptid.pid ();
-
-      /* Save the syscall list from the execing process.  */
-      proc = get_thread_process (event_thr);
-      syscalls_to_catch = std::move (proc->syscalls_to_catch);
-
-      /* Delete the execing process and all its threads.  */
-      netbsd_mourn (proc);
-      current_thread = NULL;
-
-      /* Create a new process/lwp/thread.  */
-      proc = netbsd_add_process (event_pid, 0);
-      event_lwp = add_lwp (event_ptid);
-      event_thr = get_lwp_thread (event_lwp);
-      gdb_assert (current_thread == event_thr);
-      netbsd_arch_setup_thread (event_thr);
-
-      /* Set the event status.  */
-      event_lwp->waitstatus.kind = TARGET_WAITKIND_EXECD;
-      event_lwp->waitstatus.value.execd_pathname
-	= xstrdup (netbsd_proc_pid_to_exec_file (lwpid_of (event_thr)));
-
-      /* Mark the exec status as pending.  */
-      event_lwp->stopped = 1;
-      event_lwp->status_pending_p = 1;
-      event_lwp->status_pending = wstat;
-      event_thr->last_resume_kind = resume_continue;
-      event_thr->last_status.kind = TARGET_WAITKIND_IGNORE;
-
-      /* Update syscall state in the new lwp, effectively mid-syscall too.  */
-      event_lwp->syscall_state = TARGET_WAITKIND_SYSCALL_ENTRY;
-
-      /* Restore the list to catch.  Don't rely on the client, which is free
-	 to avoid sending a new list when the architecture doesn't change.
-	 Also, for ANY_SYSCALL, the architecture doesn't really matter.  */
-      proc->syscalls_to_catch = std::move (syscalls_to_catch);
-
-      /* Report the event.  */
-      *orig_event_lwp = event_lwp;
-      return 0;
-    }
-
-  internal_error (__FILE__, __LINE__, _("unknown ptrace event %d"), event);
-}
-
 /* Return the PC as read from the regcache of LWP, without any
    adjustment.  */
 
@@ -677,178 +403,6 @@ get_pc (struct lwp_info *lwp)
 
   current_thread = saved_thread;
   return pc;
-}
-
-/* This function should only be called if LWP got a SYSCALL_SIGTRAP.
-   Fill *SYSNO with the syscall nr trapped.  */
-
-static void
-get_syscall_trapinfo (struct lwp_info *lwp, int *sysno)
-{
-  struct thread_info *saved_thread;
-  struct regcache *regcache;
-
-  if (the_low_target.get_syscall_trapinfo == NULL)
-    {
-      /* If we cannot get the syscall trapinfo, report an unknown
-	 system call number.  */
-      *sysno = UNKNOWN_SYSCALL;
-      return;
-    }
-
-  saved_thread = current_thread;
-  current_thread = get_lwp_thread (lwp);
-
-  regcache = get_thread_regcache (current_thread, 1);
-  (*the_low_target.get_syscall_trapinfo) (regcache, sysno);
-
-  if (debug_threads)
-    debug_printf ("get_syscall_trapinfo sysno %d\n", *sysno);
-
-  current_thread = saved_thread;
-}
-
-static int check_stopped_by_watchpoint (struct lwp_info *child);
-
-/* Called when the LWP stopped for a signal/trap.  If it stopped for a
-   trap check what caused it (breakpoint, watchpoint, trace, etc.),
-   and save the result in the LWP's stop_reason field.  If it stopped
-   for a breakpoint, decrement the PC if necessary on the lwp's
-   architecture.  Returns true if we now have the LWP's stop PC.  */
-
-static int
-save_stop_reason (struct lwp_info *lwp)
-{
-  CORE_ADDR pc;
-  CORE_ADDR sw_breakpoint_pc;
-  struct thread_info *saved_thread;
-#if USE_SIGTRAP_SIGINFO
-  siginfo_t siginfo;
-#endif
-
-  if (the_low_target.get_pc == NULL)
-    return 0;
-
-  pc = get_pc (lwp);
-  sw_breakpoint_pc = pc - the_low_target.decr_pc_after_break;
-
-  /* breakpoint_at reads from the current thread.  */
-  saved_thread = current_thread;
-  current_thread = get_lwp_thread (lwp);
-
-#if USE_SIGTRAP_SIGINFO
-  if (ptrace (PTRACE_GETSIGINFO, lwpid_of (current_thread),
-	      (PTRACE_TYPE_ARG3) 0, &siginfo) == 0)
-    {
-      if (siginfo.si_signo == SIGTRAP)
-	{
-	  if (GDB_ARCH_IS_TRAP_BRKPT (siginfo.si_code)
-	      && GDB_ARCH_IS_TRAP_HWBKPT (siginfo.si_code))
-	    {
-	      /* The si_code is ambiguous on this arch -- check debug
-		 registers.  */
-	      if (!check_stopped_by_watchpoint (lwp))
-		lwp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
-	    }
-	  else if (GDB_ARCH_IS_TRAP_BRKPT (siginfo.si_code))
-	    {
-	      /* If we determine the LWP stopped for a SW breakpoint,
-		 trust it.  Particularly don't check watchpoint
-		 registers, because at least on s390, we'd find
-		 stopped-by-watchpoint as long as there's a watchpoint
-		 set.  */
-	      lwp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
-	    }
-	  else if (GDB_ARCH_IS_TRAP_HWBKPT (siginfo.si_code))
-	    {
-	      /* This can indicate either a hardware breakpoint or
-		 hardware watchpoint.  Check debug registers.  */
-	      if (!check_stopped_by_watchpoint (lwp))
-		lwp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
-	    }
-	  else if (siginfo.si_code == TRAP_TRACE)
-	    {
-	      /* We may have single stepped an instruction that
-		 triggered a watchpoint.  In that case, on some
-		 architectures (such as x86), instead of TRAP_HWBKPT,
-		 si_code indicates TRAP_TRACE, and we need to check
-		 the debug registers separately.  */
-	      if (!check_stopped_by_watchpoint (lwp))
-		lwp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
-	    }
-	}
-    }
-#else
-  /* We may have just stepped a breakpoint instruction.  E.g., in
-     non-stop mode, GDB first tells the thread A to step a range, and
-     then the user inserts a breakpoint inside the range.  In that
-     case we need to report the breakpoint PC.  */
-  if ((!lwp->stepping || lwp->stop_pc == sw_breakpoint_pc)
-      && (*the_low_target.breakpoint_at) (sw_breakpoint_pc))
-    lwp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
-
-  if (hardware_breakpoint_inserted_here (pc))
-    lwp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
-
-  if (lwp->stop_reason == TARGET_STOPPED_BY_NO_REASON)
-    check_stopped_by_watchpoint (lwp);
-#endif
-
-  if (lwp->stop_reason == TARGET_STOPPED_BY_SW_BREAKPOINT)
-    {
-      if (debug_threads)
-	{
-	  struct thread_info *thr = get_lwp_thread (lwp);
-
-	  debug_printf ("CSBB: %s stopped by software breakpoint\n",
-			target_pid_to_str (ptid_of (thr)));
-	}
-
-      /* Back up the PC if necessary.  */
-      if (pc != sw_breakpoint_pc)
-	{
-	  struct regcache *regcache
-	    = get_thread_regcache (current_thread, 1);
-	  (*the_low_target.set_pc) (regcache, sw_breakpoint_pc);
-	}
-
-      /* Update this so we record the correct stop PC below.  */
-      pc = sw_breakpoint_pc;
-    }
-  else if (lwp->stop_reason == TARGET_STOPPED_BY_HW_BREAKPOINT)
-    {
-      if (debug_threads)
-	{
-	  struct thread_info *thr = get_lwp_thread (lwp);
-
-	  debug_printf ("CSBB: %s stopped by hardware breakpoint\n",
-			target_pid_to_str (ptid_of (thr)));
-	}
-    }
-  else if (lwp->stop_reason == TARGET_STOPPED_BY_WATCHPOINT)
-    {
-      if (debug_threads)
-	{
-	  struct thread_info *thr = get_lwp_thread (lwp);
-
-	  debug_printf ("CSBB: %s stopped by hardware watchpoint\n",
-			target_pid_to_str (ptid_of (thr)));
-	}
-    }
-  else if (lwp->stop_reason == TARGET_STOPPED_BY_SINGLE_STEP)
-    {
-      if (debug_threads)
-	{
-	  struct thread_info *thr = get_lwp_thread (lwp);
-
-	  debug_printf ("CSBB: %s stopped by trace\n",
-			target_pid_to_str (ptid_of (thr)));
-	}
-    }
-
-  lwp->stop_pc = pc;
-  current_thread = saved_thread;
-  return 1;
 }
 
 static struct lwp_info *
@@ -2479,1295 +2033,195 @@ maybe_hw_step (struct thread_info *thread)
     }
 }
 
-/* Resume LWPs that are currently stopped without any pending status
-   to report, but are resumed from the core's perspective.  */
-
-static void
-resume_stopped_resumed_lwps (thread_info *thread)
-{
-  struct lwp_info *lp = get_thread_lwp (thread);
-
-  if (lp->stopped
-      && !lp->suspended
-      && !lp->status_pending_p
-      && thread->last_status.kind == TARGET_WAITKIND_IGNORE)
-    {
-      int step = 0;
-
-      if (thread->last_resume_kind == resume_step)
-	step = maybe_hw_step (thread);
-
-      if (debug_threads)
-	debug_printf ("RSRL: resuming stopped-resumed LWP %s at %s: step=%d\n",
-		      target_pid_to_str (ptid_of (thread)),
-		      paddress (lp->stop_pc),
-		      step);
-
-      netbsd_resume_one_lwp (lp, step, GDB_SIGNAL_0, NULL);
-    }
-}
-
-/* Wait for an event from child(ren) WAIT_PTID, and return any that
-   match FILTER_PTID (leaving others pending).  The PTIDs can be:
-   minus_one_ptid, to specify any child; a pid PTID, specifying all
-   lwps of a thread group; or a PTID representing a single lwp.  Store
-   the stop status through the status pointer WSTAT.  OPTIONS is
-   passed to the waitpid call.  Return 0 if no event was found and
-   OPTIONS contains WNOHANG.  Return -1 if no unwaited-for children
-   was found.  Return the PID of the stopped child otherwise.  */
-
-static int
-netbsd_wait_for_event_filtered (ptid_t wait_ptid, ptid_t filter_ptid,
-			       int *wstatp, int options)
-{
-  struct thread_info *event_thread;
-  struct lwp_info *event_child, *requested_child;
-  sigset_t block_mask, prev_mask;
-
- retry:
-  /* N.B. event_thread points to the thread_info struct that contains
-     event_child.  Keep them in sync.  */
-  event_thread = NULL;
-  event_child = NULL;
-  requested_child = NULL;
-
-  /* Check for a lwp with a pending status.  */
-
-  if (filter_ptid == minus_one_ptid || filter_ptid.is_pid ())
-    {
-      event_thread = find_thread_in_random ([&] (thread_info *thread)
-	{
-	  return status_pending_p_callback (thread, filter_ptid);
-	});
-
-      if (event_thread != NULL)
-	event_child = get_thread_lwp (event_thread);
-      if (debug_threads && event_thread)
-	debug_printf ("Got a pending child %ld\n", lwpid_of (event_thread));
-    }
-  else if (filter_ptid != null_ptid)
-    {
-      requested_child = find_lwp_pid (filter_ptid);
-
-      if (stopping_threads == NOT_STOPPING_THREADS
-	  && requested_child->status_pending_p
-	  && (requested_child->collecting_fast_tracepoint
-	      != fast_tpoint_collect_result::not_collecting))
-	{
-	  enqueue_one_deferred_signal (requested_child,
-				       &requested_child->status_pending);
-	  requested_child->status_pending_p = 0;
-	  requested_child->status_pending = 0;
-	  netbsd_resume_one_lwp (requested_child, 0, 0, NULL);
-	}
-
-      if (requested_child->suspended
-	  && requested_child->status_pending_p)
-	{
-	  internal_error (__FILE__, __LINE__,
-			  "requesting an event out of a"
-			  " suspended child?");
-	}
-
-      if (requested_child->status_pending_p)
-	{
-	  event_child = requested_child;
-	  event_thread = get_lwp_thread (event_child);
-	}
-    }
-
-  if (event_child != NULL)
-    {
-      if (debug_threads)
-	debug_printf ("Got an event from pending child %ld (%04x)\n",
-		      lwpid_of (event_thread), event_child->status_pending);
-      *wstatp = event_child->status_pending;
-      event_child->status_pending_p = 0;
-      event_child->status_pending = 0;
-      current_thread = event_thread;
-      return lwpid_of (event_thread);
-    }
-
-  /* But if we don't find a pending event, we'll have to wait.
-
-     We only enter this loop if no process has a pending wait status.
-     Thus any action taken in response to a wait status inside this
-     loop is responding as soon as we detect the status, not after any
-     pending events.  */
-
-  /* Make sure SIGCHLD is blocked until the sigsuspend below.  Block
-     all signals while here.  */
-  sigfillset (&block_mask);
-  sigprocmask (SIG_BLOCK, &block_mask, &prev_mask);
-
-  /* Always pull all events out of the kernel.  We'll randomly select
-     an event LWP out of all that have events, to prevent
-     starvation.  */
-  while (event_child == NULL)
-    {
-      pid_t ret = 0;
-
-      /* Always use -1 and WNOHANG, due to couple of a kernel/ptrace
-	 quirks:
-
-	 - If the thread group leader exits while other threads in the
-	   thread group still exist, waitpid(TGID, ...) hangs.  That
-	   waitpid won't return an exit status until the other threads
-	   in the group are reaped.
-
-	 - When a non-leader thread execs, that thread just vanishes
-	   without reporting an exit (so we'd hang if we waited for it
-	   explicitly in that case).  The exec event is reported to
-	   the TGID pid.  */
-      errno = 0;
-      ret = my_waitpid (-1, wstatp, options | WNOHANG);
-
-      if (debug_threads)
-	debug_printf ("LWFE: waitpid(-1, ...) returned %d, %s\n",
-		      ret, errno ? strerror (errno) : "ERRNO-OK");
-
-      if (ret > 0)
-	{
-	  if (debug_threads)
-	    {
-	      debug_printf ("LLW: waitpid %ld received %s\n",
-			    (long) ret, status_to_str (*wstatp));
-	    }
-
-	  /* Filter all events.  IOW, leave all events pending.  We'll
-	     randomly select an event LWP out of all that have events
-	     below.  */
-	  netbsd_low_filter_event (ret, *wstatp);
-	  /* Retry until nothing comes out of waitpid.  A single
-	     SIGCHLD can indicate more than one child stopped.  */
-	  continue;
-	}
-
-      /* Now that we've pulled all events out of the kernel, resume
-	 LWPs that don't have an interesting event to report.  */
-      if (stopping_threads == NOT_STOPPING_THREADS)
-	for_each_thread (resume_stopped_resumed_lwps);
-
-      /* ... and find an LWP with a status to report to the core, if
-	 any.  */
-      event_thread = find_thread_in_random ([&] (thread_info *thread)
-	{
-	  return status_pending_p_callback (thread, filter_ptid);
-	});
-
-      if (event_thread != NULL)
-	{
-	  event_child = get_thread_lwp (event_thread);
-	  *wstatp = event_child->status_pending;
-	  event_child->status_pending_p = 0;
-	  event_child->status_pending = 0;
-	  break;
-	}
-
-      /* Check for zombie thread group leaders.  Those can't be reaped
-	 until all other threads in the thread group are.  */
-      check_zombie_leaders ();
-
-      auto not_stopped = [&] (thread_info *thread)
-	{
-	  return not_stopped_callback (thread, wait_ptid);
-	};
-
-      /* If there are no resumed children left in the set of LWPs we
-	 want to wait for, bail.  We can't just block in
-	 waitpid/sigsuspend, because lwps might have been left stopped
-	 in trace-stop state, and we'd be stuck forever waiting for
-	 their status to change (which would only happen if we resumed
-	 them).  Even if WNOHANG is set, this return code is preferred
-	 over 0 (below), as it is more detailed.  */
-      if (find_thread (not_stopped) == NULL)
-	{
-	  if (debug_threads)
-	    debug_printf ("LLW: exit (no unwaited-for LWP)\n");
-	  sigprocmask (SIG_SETMASK, &prev_mask, NULL);
-	  return -1;
-	}
-
-      /* No interesting event to report to the caller.  */
-      if ((options & WNOHANG))
-	{
-	  if (debug_threads)
-	    debug_printf ("WNOHANG set, no event found\n");
-
-	  sigprocmask (SIG_SETMASK, &prev_mask, NULL);
-	  return 0;
-	}
-
-      /* Block until we get an event reported with SIGCHLD.  */
-      if (debug_threads)
-	debug_printf ("sigsuspend'ing\n");
-
-      sigsuspend (&prev_mask);
-      sigprocmask (SIG_SETMASK, &prev_mask, NULL);
-      goto retry;
-    }
-
-  sigprocmask (SIG_SETMASK, &prev_mask, NULL);
-
-  current_thread = event_thread;
-
-  return lwpid_of (event_thread);
-}
-
-/* Wait for an event from child(ren) PTID.  PTIDs can be:
-   minus_one_ptid, to specify any child; a pid PTID, specifying all
-   lwps of a thread group; or a PTID representing a single lwp.  Store
-   the stop status through the status pointer WSTAT.  OPTIONS is
-   passed to the waitpid call.  Return 0 if no event was found and
-   OPTIONS contains WNOHANG.  Return -1 if no unwaited-for children
-   was found.  Return the PID of the stopped child otherwise.  */
-
-static int
-netbsd_wait_for_event (ptid_t ptid, int *wstatp, int options)
-{
-  return netbsd_wait_for_event_filtered (ptid, ptid, wstatp, options);
-}
-
-/* Select one LWP out of those that have events pending.  */
-
-static void
-select_event_lwp (struct lwp_info **orig_lp)
-{
-  struct thread_info *event_thread = NULL;
-
-  /* In all-stop, give preference to the LWP that is being
-     single-stepped.  There will be at most one, and it's the LWP that
-     the core is most interested in.  If we didn't do this, then we'd
-     have to handle pending step SIGTRAPs somehow in case the core
-     later continues the previously-stepped thread, otherwise we'd
-     report the pending SIGTRAP, and the core, not having stepped the
-     thread, wouldn't understand what the trap was for, and therefore
-     would report it to the user as a random signal.  */
-  if (!non_stop)
-    {
-      event_thread = find_thread ([] (thread_info *thread)
-	{
-	  lwp_info *lp = get_thread_lwp (thread);
-
-	  return (thread->last_status.kind == TARGET_WAITKIND_IGNORE
-		  && thread->last_resume_kind == resume_step
-		  && lp->status_pending_p);
-	});
-
-      if (event_thread != NULL)
-	{
-	  if (debug_threads)
-	    debug_printf ("SEL: Select single-step %s\n",
-			  target_pid_to_str (ptid_of (event_thread)));
-	}
-    }
-  if (event_thread == NULL)
-    {
-      /* No single-stepping LWP.  Select one at random, out of those
-         which have had events.  */
-
-      event_thread = find_thread_in_random ([&] (thread_info *thread)
-	{
-	  lwp_info *lp = get_thread_lwp (thread);
-
-	  /* Only resumed LWPs that have an event pending. */
-	  return (thread->last_status.kind == TARGET_WAITKIND_IGNORE
-		  && lp->status_pending_p);
-	});
-    }
-
-  if (event_thread != NULL)
-    {
-      struct lwp_info *event_lp = get_thread_lwp (event_thread);
-
-      /* Switch the event LWP.  */
-      *orig_lp = event_lp;
-    }
-}
-
-/* Decrement the suspend count of all LWPs, except EXCEPT, if non
-   NULL.  */
-
-static void
-unsuspend_all_lwps (struct lwp_info *except)
-{
-  for_each_thread ([&] (thread_info *thread)
-    {
-      lwp_info *lwp = get_thread_lwp (thread);
-
-      if (lwp != except)
-	lwp_suspended_decr (lwp);
-    });
-}
-
-static void move_out_of_jump_pad_callback (thread_info *thread);
-static bool stuck_in_jump_pad_callback (thread_info *thread);
-static bool lwp_running (thread_info *thread);
-static ptid_t netbsd_wait_1 (ptid_t ptid,
-			    struct target_waitstatus *ourstatus,
-			    int target_options);
-
-/* Stabilize threads (move out of jump pads).
-
-   If a thread is midway collecting a fast tracepoint, we need to
-   finish the collection and move it out of the jump pad before
-   reporting the signal.
-
-   This avoids recursion while collecting (when a signal arrives
-   midway, and the signal handler itself collects), which would trash
-   the trace buffer.  In case the user set a breakpoint in a signal
-   handler, this avoids the backtrace showing the jump pad, etc..
-   Most importantly, there are certain things we can't do safely if
-   threads are stopped in a jump pad (or in its callee's).  For
-   example:
-
-     - starting a new trace run.  A thread still collecting the
-   previous run, could trash the trace buffer when resumed.  The trace
-   buffer control structures would have been reset but the thread had
-   no way to tell.  The thread could even midway memcpy'ing to the
-   buffer, which would mean that when resumed, it would clobber the
-   trace buffer that had been set for a new run.
-
-     - we can't rewrite/reuse the jump pads for new tracepoints
-   safely.  Say you do tstart while a thread is stopped midway while
-   collecting.  When the thread is later resumed, it finishes the
-   collection, and returns to the jump pad, to execute the original
-   instruction that was under the tracepoint jump at the time the
-   older run had been started.  If the jump pad had been rewritten
-   since for something else in the new run, the thread would now
-   execute the wrong / random instructions.  */
-
-static void
-netbsd_stabilize_threads (void)
-{
-  thread_info *thread_stuck = find_thread (stuck_in_jump_pad_callback);
-
-  if (thread_stuck != NULL)
-    {
-      if (debug_threads)
-	debug_printf ("can't stabilize, LWP %ld is stuck in jump pad\n",
-		      lwpid_of (thread_stuck));
-      return;
-    }
-
-  thread_info *saved_thread = current_thread;
-
-  stabilizing_threads = 1;
-
-  /* Kick 'em all.  */
-  for_each_thread (move_out_of_jump_pad_callback);
-
-  /* Loop until all are stopped out of the jump pads.  */
-  while (find_thread (lwp_running) != NULL)
-    {
-      struct target_waitstatus ourstatus;
-      struct lwp_info *lwp;
-      int wstat;
-
-      /* Note that we go through the full wait even loop.  While
-	 moving threads out of jump pad, we need to be able to step
-	 over internal breakpoints and such.  */
-      netbsd_wait_1 (minus_one_ptid, &ourstatus, 0);
-
-      if (ourstatus.kind == TARGET_WAITKIND_STOPPED)
-	{
-	  lwp = get_thread_lwp (current_thread);
-
-	  /* Lock it.  */
-	  lwp_suspended_inc (lwp);
-
-	  if (ourstatus.value.sig != GDB_SIGNAL_0
-	      || current_thread->last_resume_kind == resume_stop)
-	    {
-	      wstat = W_STOPCODE (gdb_signal_to_host (ourstatus.value.sig));
-	      enqueue_one_deferred_signal (lwp, &wstat);
-	    }
-	}
-    }
-
-  unsuspend_all_lwps (NULL);
-
-  stabilizing_threads = 0;
-
-  current_thread = saved_thread;
-
-  if (debug_threads)
-    {
-      thread_stuck = find_thread (stuck_in_jump_pad_callback);
-
-      if (thread_stuck != NULL)
-	debug_printf ("couldn't stabilize, LWP %ld got stuck in jump pad\n",
-		      lwpid_of (thread_stuck));
-    }
-}
-
-/* Convenience function that is called when the kernel reports an
-   event that is not passed out to GDB.  */
-
-static ptid_t
-ignore_event (struct target_waitstatus *ourstatus)
-{
-  /* If we got an event, there may still be others, as a single
-     SIGCHLD can indicate more than one child stopped.  This forces
-     another target_wait call.  */
-  async_file_mark ();
-
-  ourstatus->kind = TARGET_WAITKIND_IGNORE;
-  return null_ptid;
-}
-
-/* Convenience function that is called when the kernel reports an exit
-   event.  This decides whether to report the event to GDB as a
-   process exit event, a thread exit event, or to suppress the
-   event.  */
-
-static ptid_t
-filter_exit_event (struct lwp_info *event_child,
-		   struct target_waitstatus *ourstatus)
-{
-  client_state &cs = get_client_state ();
-  struct thread_info *thread = get_lwp_thread (event_child);
-  ptid_t ptid = ptid_of (thread);
-
-  if (!last_thread_of_process_p (pid_of (thread)))
-    {
-      if (cs.report_thread_events)
-	ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
-      else
-	ourstatus->kind = TARGET_WAITKIND_IGNORE;
-
-      delete_lwp (event_child);
-    }
-  return ptid;
-}
-
-/* Returns 1 if GDB is interested in any event_child syscalls.  */
-
-static int
-gdb_catching_syscalls_p (struct lwp_info *event_child)
-{
-  struct thread_info *thread = get_lwp_thread (event_child);
-  struct process_info *proc = get_thread_process (thread);
-
-  return !proc->syscalls_to_catch.empty ();
-}
-
-/* Returns 1 if GDB is interested in the event_child syscall.
-   Only to be called when stopped reason is SYSCALL_SIGTRAP.  */
-
-static int
-gdb_catch_this_syscall_p (struct lwp_info *event_child)
-{
-  int sysno;
-  struct thread_info *thread = get_lwp_thread (event_child);
-  struct process_info *proc = get_thread_process (thread);
-
-  if (proc->syscalls_to_catch.empty ())
-    return 0;
-
-  if (proc->syscalls_to_catch[0] == ANY_SYSCALL)
-    return 1;
-
-  get_syscall_trapinfo (event_child, &sysno);
-
-  for (int iter : proc->syscalls_to_catch)
-    if (iter == sysno)
-      return 1;
-
-  return 0;
-}
-
-/* Wait for process, returns status.  */
-
-static ptid_t
-netbsd_wait_1 (ptid_t ptid,
-	      struct target_waitstatus *ourstatus, int target_options)
-{
-  client_state &cs = get_client_state ();
-  int w;
-  struct lwp_info *event_child;
-  int options;
-  int pid;
-  int step_over_finished;
-  int bp_explains_trap;
-  int maybe_internal_trap;
-  int report_to_gdb;
-  int trace_event;
-  int in_step_range;
-  int any_resumed;
-
-  if (debug_threads)
-    {
-      debug_enter ();
-      debug_printf ("netbsd_wait_1: [%s]\n", target_pid_to_str (ptid));
-    }
-
-  /* Translate generic target options into netbsd options.  */
-  options = __WALL;
-  if (target_options & TARGET_WNOHANG)
-    options |= WNOHANG;
-
-  bp_explains_trap = 0;
-  trace_event = 0;
-  in_step_range = 0;
-  ourstatus->kind = TARGET_WAITKIND_IGNORE;
-
-  auto status_pending_p_any = [&] (thread_info *thread)
-    {
-      return status_pending_p_callback (thread, minus_one_ptid);
-    };
-
-  auto not_stopped = [&] (thread_info *thread)
-    {
-      return not_stopped_callback (thread, minus_one_ptid);
-    };
-
-  /* Find a resumed LWP, if any.  */
-  if (find_thread (status_pending_p_any) != NULL)
-    any_resumed = 1;
-  else if (find_thread (not_stopped) != NULL)
-    any_resumed = 1;
-  else
-    any_resumed = 0;
-
-  if (step_over_bkpt == null_ptid)
-    pid = netbsd_wait_for_event (ptid, &w, options);
-  else
-    {
-      if (debug_threads)
-	debug_printf ("step_over_bkpt set [%s], doing a blocking wait\n",
-		      target_pid_to_str (step_over_bkpt));
-      pid = netbsd_wait_for_event (step_over_bkpt, &w, options & ~WNOHANG);
-    }
-
-  if (pid == 0 || (pid == -1 && !any_resumed))
-    {
-      gdb_assert (target_options & TARGET_WNOHANG);
-
-      if (debug_threads)
-	{
-	  debug_printf ("netbsd_wait_1 ret = null_ptid, "
-			"TARGET_WAITKIND_IGNORE\n");
-	  debug_exit ();
-	}
-
-      ourstatus->kind = TARGET_WAITKIND_IGNORE;
-      return null_ptid;
-    }
-  else if (pid == -1)
-    {
-      if (debug_threads)
-	{
-	  debug_printf ("netbsd_wait_1 ret = null_ptid, "
-			"TARGET_WAITKIND_NO_RESUMED\n");
-	  debug_exit ();
-	}
-
-      ourstatus->kind = TARGET_WAITKIND_NO_RESUMED;
-      return null_ptid;
-    }
-
-  event_child = get_thread_lwp (current_thread);
-
-  /* netbsd_wait_for_event only returns an exit status for the last
-     child of a process.  Report it.  */
-  if (WIFEXITED (w) || WIFSIGNALED (w))
-    {
-      if (WIFEXITED (w))
-	{
-	  ourstatus->kind = TARGET_WAITKIND_EXITED;
-	  ourstatus->value.integer = WEXITSTATUS (w);
-
-	  if (debug_threads)
-	    {
-	      debug_printf ("netbsd_wait_1 ret = %s, exited with "
-			    "retcode %d\n",
-			    target_pid_to_str (ptid_of (current_thread)),
-			    WEXITSTATUS (w));
-	      debug_exit ();
-	    }
-	}
-      else
-	{
-	  ourstatus->kind = TARGET_WAITKIND_SIGNALLED;
-	  ourstatus->value.sig = gdb_signal_from_host (WTERMSIG (w));
-
-	  if (debug_threads)
-	    {
-	      debug_printf ("netbsd_wait_1 ret = %s, terminated with "
-			    "signal %d\n",
-			    target_pid_to_str (ptid_of (current_thread)),
-			    WTERMSIG (w));
-	      debug_exit ();
-	    }
-	}
-
-      if (ourstatus->kind == TARGET_WAITKIND_EXITED)
-	return filter_exit_event (event_child, ourstatus);
-
-      return ptid_of (current_thread);
-    }
-
-  /* If step-over executes a breakpoint instruction, in the case of a
-     hardware single step it means a gdb/gdbserver breakpoint had been
-     planted on top of a permanent breakpoint, in the case of a software
-     single step it may just mean that gdbserver hit the reinsert breakpoint.
-     The PC has been adjusted by save_stop_reason to point at
-     the breakpoint address.
-     So in the case of the hardware single step advance the PC manually
-     past the breakpoint and in the case of software single step advance only
-     if it's not the single_step_breakpoint we are hitting.
-     This avoids that a program would keep trapping a permanent breakpoint
-     forever.  */
-  if (step_over_bkpt != null_ptid
-      && event_child->stop_reason == TARGET_STOPPED_BY_SW_BREAKPOINT
-      && (event_child->stepping
-	  || !single_step_breakpoint_inserted_here (event_child->stop_pc)))
-    {
-      int increment_pc = 0;
-      int breakpoint_kind = 0;
-      CORE_ADDR stop_pc = event_child->stop_pc;
-
-      breakpoint_kind =
-	the_target->breakpoint_kind_from_current_state (&stop_pc);
-      the_target->sw_breakpoint_from_kind (breakpoint_kind, &increment_pc);
-
-      if (debug_threads)
-	{
-	  debug_printf ("step-over for %s executed software breakpoint\n",
-			target_pid_to_str (ptid_of (current_thread)));
-	}
-
-      if (increment_pc != 0)
-	{
-	  struct regcache *regcache
-	    = get_thread_regcache (current_thread, 1);
-
-	  event_child->stop_pc += increment_pc;
-	  (*the_low_target.set_pc) (regcache, event_child->stop_pc);
-
-	  if (!(*the_low_target.breakpoint_at) (event_child->stop_pc))
-	    event_child->stop_reason = TARGET_STOPPED_BY_NO_REASON;
-	}
-    }
-
-  /* If this event was not handled before, and is not a SIGTRAP, we
-     report it.  SIGILL and SIGSEGV are also treated as traps in case
-     a breakpoint is inserted at the current PC.  If this target does
-     not support internal breakpoints at all, we also report the
-     SIGTRAP without further processing; it's of no concern to us.  */
-  maybe_internal_trap
-    = (supports_breakpoints ()
-       && (WSTOPSIG (w) == SIGTRAP
-	   || ((WSTOPSIG (w) == SIGILL
-		|| WSTOPSIG (w) == SIGSEGV)
-	       && (*the_low_target.breakpoint_at) (event_child->stop_pc))));
-
-  if (maybe_internal_trap)
-    {
-      /* Handle anything that requires bookkeeping before deciding to
-	 report the event or continue waiting.  */
-
-      /* First check if we can explain the SIGTRAP with an internal
-	 breakpoint, or if we should possibly report the event to GDB.
-	 Do this before anything that may remove or insert a
-	 breakpoint.  */
-      bp_explains_trap = breakpoint_inserted_here (event_child->stop_pc);
-
-      /* We have a SIGTRAP, possibly a step-over dance has just
-	 finished.  If so, tweak the state machine accordingly,
-	 reinsert breakpoints and delete any single-step
-	 breakpoints.  */
-      step_over_finished = finish_step_over (event_child);
-
-      /* Now invoke the callbacks of any internal breakpoints there.  */
-      check_breakpoints (event_child->stop_pc);
-
-      /* Handle tracepoint data collecting.  This may overflow the
-	 trace buffer, and cause a tracing stop, removing
-	 breakpoints.  */
-      trace_event = handle_tracepoints (event_child);
-
-      if (bp_explains_trap)
-	{
-	  if (debug_threads)
-	    debug_printf ("Hit a gdbserver breakpoint.\n");
-	}
-    }
-  else
-    {
-      /* We have some other signal, possibly a step-over dance was in
-	 progress, and it should be cancelled too.  */
-      step_over_finished = finish_step_over (event_child);
-    }
-
-  /* We have all the data we need.  Either report the event to GDB, or
-     resume threads and keep waiting for more.  */
-
-  /* If we're collecting a fast tracepoint, finish the collection and
-     move out of the jump pad before delivering a signal.  See
-     netbsd_stabilize_threads.  */
-
-  if (WIFSTOPPED (w)
-      && WSTOPSIG (w) != SIGTRAP
-      && supports_fast_tracepoints ()
-      && agent_loaded_p ())
-    {
-      if (debug_threads)
-	debug_printf ("Got signal %d for LWP %ld.  Check if we need "
-		      "to defer or adjust it.\n",
-		      WSTOPSIG (w), lwpid_of (current_thread));
-
-      /* Allow debugging the jump pad itself.  */
-      if (current_thread->last_resume_kind != resume_step
-	  && maybe_move_out_of_jump_pad (event_child, &w))
-	{
-	  enqueue_one_deferred_signal (event_child, &w);
-
-	  if (debug_threads)
-	    debug_printf ("Signal %d for LWP %ld deferred (in jump pad)\n",
-			  WSTOPSIG (w), lwpid_of (current_thread));
-
-	  netbsd_resume_one_lwp (event_child, 0, 0, NULL);
-
-	  if (debug_threads)
-	    debug_exit ();
-	  return ignore_event (ourstatus);
-	}
-    }
-
-  if (event_child->collecting_fast_tracepoint
-      != fast_tpoint_collect_result::not_collecting)
-    {
-      if (debug_threads)
-	debug_printf ("LWP %ld was trying to move out of the jump pad (%d). "
-		      "Check if we're already there.\n",
-		      lwpid_of (current_thread),
-		      (int) event_child->collecting_fast_tracepoint);
-
-      trace_event = 1;
-
-      event_child->collecting_fast_tracepoint
-	= netbsd_fast_tracepoint_collecting (event_child, NULL);
-
-      if (event_child->collecting_fast_tracepoint
-	  != fast_tpoint_collect_result::before_insn)
-	{
-	  /* No longer need this breakpoint.  */
-	  if (event_child->exit_jump_pad_bkpt != NULL)
-	    {
-	      if (debug_threads)
-		debug_printf ("No longer need exit-jump-pad bkpt; removing it."
-			      "stopping all threads momentarily.\n");
-
-	      /* Other running threads could hit this breakpoint.
-		 We don't handle moribund locations like GDB does,
-		 instead we always pause all threads when removing
-		 breakpoints, so that any step-over or
-		 decr_pc_after_break adjustment is always taken
-		 care of while the breakpoint is still
-		 inserted.  */
-	      stop_all_lwps (1, event_child);
-
-	      delete_breakpoint (event_child->exit_jump_pad_bkpt);
-	      event_child->exit_jump_pad_bkpt = NULL;
-
-	      unstop_all_lwps (1, event_child);
-
-	      gdb_assert (event_child->suspended >= 0);
-	    }
-	}
-
-      if (event_child->collecting_fast_tracepoint
-	  == fast_tpoint_collect_result::not_collecting)
-	{
-	  if (debug_threads)
-	    debug_printf ("fast tracepoint finished "
-			  "collecting successfully.\n");
-
-	  /* We may have a deferred signal to report.  */
-	  if (dequeue_one_deferred_signal (event_child, &w))
-	    {
-	      if (debug_threads)
-		debug_printf ("dequeued one signal.\n");
-	    }
-	  else
-	    {
-	      if (debug_threads)
-		debug_printf ("no deferred signals.\n");
-
-	      if (stabilizing_threads)
-		{
-		  ourstatus->kind = TARGET_WAITKIND_STOPPED;
-		  ourstatus->value.sig = GDB_SIGNAL_0;
-
-		  if (debug_threads)
-		    {
-		      debug_printf ("netbsd_wait_1 ret = %s, stopped "
-				    "while stabilizing threads\n",
-				    target_pid_to_str (ptid_of (current_thread)));
-		      debug_exit ();
-		    }
-
-		  return ptid_of (current_thread);
-		}
-	    }
-	}
-    }
-
-  /* Check whether GDB would be interested in this event.  */
-
-  /* Check if GDB is interested in this syscall.  */
-  if (WIFSTOPPED (w)
-      && WSTOPSIG (w) == SYSCALL_SIGTRAP
-      && !gdb_catch_this_syscall_p (event_child))
-    {
-      if (debug_threads)
-	{
-	  debug_printf ("Ignored syscall for LWP %ld.\n",
-			lwpid_of (current_thread));
-	}
-
-      netbsd_resume_one_lwp (event_child, event_child->stepping,
-			    0, NULL);
-
-      if (debug_threads)
-	debug_exit ();
-      return ignore_event (ourstatus);
-    }
-
-  /* If GDB is not interested in this signal, don't stop other
-     threads, and don't report it to GDB.  Just resume the inferior
-     right away.  We do this for threading-related signals as well as
-     any that GDB specifically requested we ignore.  But never ignore
-     SIGSTOP if we sent it ourselves, and do not ignore signals when
-     stepping - they may require special handling to skip the signal
-     handler. Also never ignore signals that could be caused by a
-     breakpoint.  */
-  if (WIFSTOPPED (w)
-      && current_thread->last_resume_kind != resume_step
-      && (
-#if defined (USE_THREAD_DB) && !defined (__ANDROID__)
-	  (current_process ()->priv->thread_db != NULL
-	   && (WSTOPSIG (w) == __SIGRTMIN
-	       || WSTOPSIG (w) == __SIGRTMIN + 1))
-	  ||
-#endif
-	  (cs.pass_signals[gdb_signal_from_host (WSTOPSIG (w))]
-	   && !(WSTOPSIG (w) == SIGSTOP
-		&& current_thread->last_resume_kind == resume_stop)
-	   && !netbsd_wstatus_maybe_breakpoint (w))))
-    {
-      siginfo_t info, *info_p;
-
-      if (debug_threads)
-	debug_printf ("Ignored signal %d for LWP %ld.\n",
-		      WSTOPSIG (w), lwpid_of (current_thread));
-
-      if (ptrace (PTRACE_GETSIGINFO, lwpid_of (current_thread),
-		  (PTRACE_TYPE_ARG3) 0, &info) == 0)
-	info_p = &info;
-      else
-	info_p = NULL;
-
-      if (step_over_finished)
-	{
-	  /* We cancelled this thread's step-over above.  We still
-	     need to unsuspend all other LWPs, and set them back
-	     running again while the signal handler runs.  */
-	  unsuspend_all_lwps (event_child);
-
-	  /* Enqueue the pending signal info so that proceed_all_lwps
-	     doesn't lose it.  */
-	  enqueue_pending_signal (event_child, WSTOPSIG (w), info_p);
-
-	  proceed_all_lwps ();
-	}
-      else
-	{
-	  netbsd_resume_one_lwp (event_child, event_child->stepping,
-				WSTOPSIG (w), info_p);
-	}
-
-      if (debug_threads)
-	debug_exit ();
-
-      return ignore_event (ourstatus);
-    }
-
-  /* Note that all addresses are always "out of the step range" when
-     there's no range to begin with.  */
-  in_step_range = lwp_in_step_range (event_child);
-
-  /* If GDB wanted this thread to single step, and the thread is out
-     of the step range, we always want to report the SIGTRAP, and let
-     GDB handle it.  Watchpoints should always be reported.  So should
-     signals we can't explain.  A SIGTRAP we can't explain could be a
-     GDB breakpoint --- we may or not support Z0 breakpoints.  If we
-     do, we're be able to handle GDB breakpoints on top of internal
-     breakpoints, by handling the internal breakpoint and still
-     reporting the event to GDB.  If we don't, we're out of luck, GDB
-     won't see the breakpoint hit.  If we see a single-step event but
-     the thread should be continuing, don't pass the trap to gdb.
-     That indicates that we had previously finished a single-step but
-     left the single-step pending -- see
-     complete_ongoing_step_over.  */
-  report_to_gdb = (!maybe_internal_trap
-		   || (current_thread->last_resume_kind == resume_step
-		       && !in_step_range)
-		   || event_child->stop_reason == TARGET_STOPPED_BY_WATCHPOINT
-		   || (!in_step_range
-		       && !bp_explains_trap
-		       && !trace_event
-		       && !step_over_finished
-		       && !(current_thread->last_resume_kind == resume_continue
-			    && event_child->stop_reason == TARGET_STOPPED_BY_SINGLE_STEP))
-		   || (gdb_breakpoint_here (event_child->stop_pc)
-		       && gdb_condition_true_at_breakpoint (event_child->stop_pc)
-		       && gdb_no_commands_at_breakpoint (event_child->stop_pc))
-		   || event_child->waitstatus.kind != TARGET_WAITKIND_IGNORE);
-
-  run_breakpoint_commands (event_child->stop_pc);
-
-  /* We found no reason GDB would want us to stop.  We either hit one
-     of our own breakpoints, or finished an internal step GDB
-     shouldn't know about.  */
-  if (!report_to_gdb)
-    {
-      if (debug_threads)
-	{
-	  if (bp_explains_trap)
-	    debug_printf ("Hit a gdbserver breakpoint.\n");
-	  if (step_over_finished)
-	    debug_printf ("Step-over finished.\n");
-	  if (trace_event)
-	    debug_printf ("Tracepoint event.\n");
-	  if (lwp_in_step_range (event_child))
-	    debug_printf ("Range stepping pc 0x%s [0x%s, 0x%s).\n",
-			  paddress (event_child->stop_pc),
-			  paddress (event_child->step_range_start),
-			  paddress (event_child->step_range_end));
-	}
-
-      /* We're not reporting this breakpoint to GDB, so apply the
-	 decr_pc_after_break adjustment to the inferior's regcache
-	 ourselves.  */
-
-      if (the_low_target.set_pc != NULL)
-	{
-	  struct regcache *regcache
-	    = get_thread_regcache (current_thread, 1);
-	  (*the_low_target.set_pc) (regcache, event_child->stop_pc);
-	}
-
-      if (step_over_finished)
-	{
-	  /* If we have finished stepping over a breakpoint, we've
-	     stopped and suspended all LWPs momentarily except the
-	     stepping one.  This is where we resume them all again.
-	     We're going to keep waiting, so use proceed, which
-	     handles stepping over the next breakpoint.  */
-	  unsuspend_all_lwps (event_child);
-	}
-      else
-	{
-	  /* Remove the single-step breakpoints if any.  Note that
-	     there isn't single-step breakpoint if we finished stepping
-	     over.  */
-	  if (can_software_single_step ()
-	      && has_single_step_breakpoints (current_thread))
-	    {
-	      stop_all_lwps (0, event_child);
-	      delete_single_step_breakpoints (current_thread);
-	      unstop_all_lwps (0, event_child);
-	    }
-	}
-
-      if (debug_threads)
-	debug_printf ("proceeding all threads.\n");
-      proceed_all_lwps ();
-
-      if (debug_threads)
-	debug_exit ();
-
-      return ignore_event (ourstatus);
-    }
-
-  if (debug_threads)
-    {
-      if (event_child->waitstatus.kind != TARGET_WAITKIND_IGNORE)
-	{
-	  std::string str
-	    = target_waitstatus_to_string (&event_child->waitstatus);
-
-	  debug_printf ("LWP %ld: extended event with waitstatus %s\n",
-			lwpid_of (get_lwp_thread (event_child)), str.c_str ());
-	}
-      if (current_thread->last_resume_kind == resume_step)
-	{
-	  if (event_child->step_range_start == event_child->step_range_end)
-	    debug_printf ("GDB wanted to single-step, reporting event.\n");
-	  else if (!lwp_in_step_range (event_child))
-	    debug_printf ("Out of step range, reporting event.\n");
-	}
-      if (event_child->stop_reason == TARGET_STOPPED_BY_WATCHPOINT)
-	debug_printf ("Stopped by watchpoint.\n");
-      else if (gdb_breakpoint_here (event_child->stop_pc))
-	debug_printf ("Stopped by GDB breakpoint.\n");
-      if (debug_threads)
-	debug_printf ("Hit a non-gdbserver trap event.\n");
-    }
-
-  /* Alright, we're going to report a stop.  */
-
-  /* Remove single-step breakpoints.  */
-  if (can_software_single_step ())
-    {
-      /* Remove single-step breakpoints or not.  It it is true, stop all
-	 lwps, so that other threads won't hit the breakpoint in the
-	 staled memory.  */
-      int remove_single_step_breakpoints_p = 0;
-
-      if (non_stop)
-	{
-	  remove_single_step_breakpoints_p
-	    = has_single_step_breakpoints (current_thread);
-	}
-      else
-	{
-	  /* In all-stop, a stop reply cancels all previous resume
-	     requests.  Delete all single-step breakpoints.  */
-
-	  find_thread ([&] (thread_info *thread) {
-	    if (has_single_step_breakpoints (thread))
-	      {
-		remove_single_step_breakpoints_p = 1;
-		return true;
-	      }
-
-	    return false;
-	  });
-	}
-
-      if (remove_single_step_breakpoints_p)
-	{
-	  /* If we remove single-step breakpoints from memory, stop all lwps,
-	     so that other threads won't hit the breakpoint in the staled
-	     memory.  */
-	  stop_all_lwps (0, event_child);
-
-	  if (non_stop)
-	    {
-	      gdb_assert (has_single_step_breakpoints (current_thread));
-	      delete_single_step_breakpoints (current_thread);
-	    }
-	  else
-	    {
-	      for_each_thread ([] (thread_info *thread){
-		if (has_single_step_breakpoints (thread))
-		  delete_single_step_breakpoints (thread);
-	      });
-	    }
-
-	  unstop_all_lwps (0, event_child);
-	}
-    }
-
-  if (!stabilizing_threads)
-    {
-      /* In all-stop, stop all threads.  */
-      if (!non_stop)
-	stop_all_lwps (0, NULL);
-
-      if (step_over_finished)
-	{
-	  if (!non_stop)
-	    {
-	      /* If we were doing a step-over, all other threads but
-		 the stepping one had been paused in start_step_over,
-		 with their suspend counts incremented.  We don't want
-		 to do a full unstop/unpause, because we're in
-		 all-stop mode (so we want threads stopped), but we
-		 still need to unsuspend the other threads, to
-		 decrement their `suspended' count back.  */
-	      unsuspend_all_lwps (event_child);
-	    }
-	  else
-	    {
-	      /* If we just finished a step-over, then all threads had
-		 been momentarily paused.  In all-stop, that's fine,
-		 we want threads stopped by now anyway.  In non-stop,
-		 we need to re-resume threads that GDB wanted to be
-		 running.  */
-	      unstop_all_lwps (1, event_child);
-	    }
-	}
-
-      /* If we're not waiting for a specific LWP, choose an event LWP
-	 from among those that have had events.  Giving equal priority
-	 to all LWPs that have had events helps prevent
-	 starvation.  */
-      if (ptid == minus_one_ptid)
-	{
-	  event_child->status_pending_p = 1;
-	  event_child->status_pending = w;
-
-	  select_event_lwp (&event_child);
-
-	  /* current_thread and event_child must stay in sync.  */
-	  current_thread = get_lwp_thread (event_child);
-
-	  event_child->status_pending_p = 0;
-	  w = event_child->status_pending;
-	}
-
-
-      /* Stabilize threads (move out of jump pads).  */
-      if (!non_stop)
-	stabilize_threads ();
-    }
-  else
-    {
-      /* If we just finished a step-over, then all threads had been
-	 momentarily paused.  In all-stop, that's fine, we want
-	 threads stopped by now anyway.  In non-stop, we need to
-	 re-resume threads that GDB wanted to be running.  */
-      if (step_over_finished)
-	unstop_all_lwps (1, event_child);
-    }
-
-  if (event_child->waitstatus.kind != TARGET_WAITKIND_IGNORE)
-    {
-      /* If the reported event is an exit, fork, vfork or exec, let
-	 GDB know.  */
-
-      /* Break the unreported fork relationship chain.  */
-      if (event_child->waitstatus.kind == TARGET_WAITKIND_FORKED
-	  || event_child->waitstatus.kind == TARGET_WAITKIND_VFORKED)
-	{
-	  event_child->fork_relative->fork_relative = NULL;
-	  event_child->fork_relative = NULL;
-	}
-
-      *ourstatus = event_child->waitstatus;
-      /* Clear the event lwp's waitstatus since we handled it already.  */
-      event_child->waitstatus.kind = TARGET_WAITKIND_IGNORE;
-    }
-  else
-    ourstatus->kind = TARGET_WAITKIND_STOPPED;
-
-  /* Now that we've selected our final event LWP, un-adjust its PC if
-     it was a software breakpoint, and the client doesn't know we can
-     adjust the breakpoint ourselves.  */
-  if (event_child->stop_reason == TARGET_STOPPED_BY_SW_BREAKPOINT
-      && !cs.swbreak_feature)
-    {
-      int decr_pc = the_low_target.decr_pc_after_break;
-
-      if (decr_pc != 0)
-	{
-	  struct regcache *regcache
-	    = get_thread_regcache (current_thread, 1);
-	  (*the_low_target.set_pc) (regcache, event_child->stop_pc + decr_pc);
-	}
-    }
-
-  if (WSTOPSIG (w) == SYSCALL_SIGTRAP)
-    {
-      get_syscall_trapinfo (event_child,
-			    &ourstatus->value.syscall_number);
-      ourstatus->kind = event_child->syscall_state;
-    }
-  else if (current_thread->last_resume_kind == resume_stop
-	   && WSTOPSIG (w) == SIGSTOP)
-    {
-      /* A thread that has been requested to stop by GDB with vCont;t,
-	 and it stopped cleanly, so report as SIG0.  The use of
-	 SIGSTOP is an implementation detail.  */
-      ourstatus->value.sig = GDB_SIGNAL_0;
-    }
-  else if (current_thread->last_resume_kind == resume_stop
-	   && WSTOPSIG (w) != SIGSTOP)
-    {
-      /* A thread that has been requested to stop by GDB with vCont;t,
-	 but, it stopped for other reasons.  */
-      ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (w));
-    }
-  else if (ourstatus->kind == TARGET_WAITKIND_STOPPED)
-    {
-      ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (w));
-    }
-
-  gdb_assert (step_over_bkpt == null_ptid);
-
-  if (debug_threads)
-    {
-      debug_printf ("netbsd_wait_1 ret = %s, %d, %d\n",
-		    target_pid_to_str (ptid_of (current_thread)),
-		    ourstatus->kind, ourstatus->value.sig);
-      debug_exit ();
-    }
-
-  if (ourstatus->kind == TARGET_WAITKIND_EXITED)
-    return filter_exit_event (event_child, ourstatus);
-
-  return ptid_of (current_thread);
-}
-
-/* Get rid of any pending event in the pipe.  */
-static void
-async_file_flush (void)
-{
-  int ret;
-  char buf;
-
-  do
-    ret = read (netbsd_event_pipe[0], &buf, 1);
-  while (ret >= 0 || (ret == -1 && errno == EINTR));
-}
-
-/* Put something in the pipe, so the event loop wakes up.  */
-static void
-async_file_mark (void)
-{
-  int ret;
-
-  async_file_flush ();
-
-  do
-    ret = write (netbsd_event_pipe[1], "+", 1);
-  while (ret == 0 || (ret == -1 && errno == EINTR));
-
-  /* Ignore EAGAIN.  If the pipe is full, the event loop will already
-     be awakened anyway.  */
-}
 
 static ptid_t
 netbsd_wait (ptid_t ptid,
 	    struct target_waitstatus *ourstatus, int target_options)
 {
-  ptid_t event_ptid;
+  ptid_t wptid;
 
-  /* Flush the async file first.  */
-  if (target_is_async_p ())
-    async_file_flush ();
+  /*
+   * Always perform polling on exact PID, overwrite the default polling on
+   * WAIT_ANY.
+   *
+   * This avoids events reported in random order reported for FORK / VFORK.
+   *
+   * Polling on traced parent always simplifies the code.
+   */
+  ptid = inferior_ptid;
 
-  do
+  if (debug_nbsd_lwp)
+    fprintf_unfiltered (gdb_stdlog, "NLWP: calling super_wait (%d, %ld, %ld) target_options=%#x\n",
+                        ptid.pid (), ptid.lwp (), ptid.tid (), target_options);
+
+  wptid = inf_ptrace_target::wait (ptid, ourstatus, target_options);
+
+  if (debug_nbsd_lwp)
+    fprintf_unfiltered (gdb_stdlog, "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
+                        ptid.pid (), ptid.lwp (), ptid.tid (),
+			target_options, ourstatus->kind);
+
+  if (ourstatus->kind == TARGET_WAITKIND_STOPPED)
     {
-      event_ptid = netbsd_wait_1 (ptid, ourstatus, target_options);
+      ptrace_state_t pst;
+      ptrace_siginfo_t psi, child_psi;
+      int status;
+      pid_t pid, child, wchild;
+      ptid_t child_ptid;
+      lwpid_t lwp;
+
+      pid = wptid.pid ();
+      // Find the lwp that caused the wait status change
+      if (ptrace(PT_GET_SIGINFO, pid, &psi, sizeof(psi)) == -1)
+        perror_with_name (("ptrace"));
+
+      /* For whole-process signals pick random thread */
+      if (psi.psi_lwpid == 0) {
+        // XXX: Is this always valid?
+        lwp = inferior_ptid.lwp ();
+      } else {
+        lwp = psi.psi_lwpid;
+      }
+
+      wptid = ptid_t (pid, lwp, 0);
+
+      /* Set LWP in the process */
+      if (in_thread_list (ptid_t (pid))) {
+          if (debug_nbsd_lwp)
+            fprintf_unfiltered (gdb_stdlog,
+                                "NLWP: using LWP %d for first thread\n",
+                                lwp);
+          thread_change_ptid (ptid_t (pid), wptid);                                                                                                 
+      }
+
+      if (debug_nbsd_lwp)
+         fprintf_unfiltered (gdb_stdlog,
+                             "NLWP: received signal=%d si_code=%d in process=%d lwp=%d\n",
+                             psi.psi_siginfo.si_signo, psi.psi_siginfo.si_code, pid, lwp);
+
+      switch (psi.psi_siginfo.si_signo) {
+      case SIGTRAP:
+        switch (psi.psi_siginfo.si_code) {
+        case TRAP_BRKPT:
+//          lp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
+          break;
+        case TRAP_DBREG:
+//          if (hardware_breakpoint_inserted_here_p (get_regcache_aspace (regcache), pc))
+//            lp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
+//          else
+//            lp->stop_reason = TARGET_STOPPED_BY_WATCHPOINT;
+          break;
+        case TRAP_TRACE:
+//          lp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
+          break;
+        case TRAP_SCE:
+          ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
+          ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
+          break;
+        case TRAP_SCX:
+          ourstatus->kind = TARGET_WAITKIND_SYSCALL_RETURN;
+          ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
+          break;
+        case TRAP_EXEC:
+          ourstatus->kind = TARGET_WAITKIND_EXECD;
+          ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (pid));
+          break;
+        case TRAP_LWP:
+        case TRAP_CHLD:
+          if (ptrace(PT_GET_PROCESS_STATE, pid, &pst, sizeof(pst)) == -1)
+            perror_with_name (("ptrace"));
+          switch (pst.pe_report_event) {
+          case PTRACE_FORK:
+          case PTRACE_VFORK:
+            if (pst.pe_report_event == PTRACE_FORK)
+              ourstatus->kind = TARGET_WAITKIND_FORKED;
+            else
+              ourstatus->kind = TARGET_WAITKIND_VFORKED;
+            child = pst.pe_other_pid;
+
+            if (debug_nbsd_lwp)
+              fprintf_unfiltered (gdb_stdlog,
+                                  "NLWP: registered %s event for PID %d\n",
+                                  (pst.pe_report_event == PTRACE_FORK) ? "FORK" : "VFORK", child);
+
+            wchild = waitpid (child, &status, 0);
+
+            if (wchild == -1)
+              perror_with_name (("waitpid"));
+
+            gdb_assert (wchild == child);
+
+            if (!WIFSTOPPED(status)) {
+              /* Abnormal situation (SIGKILLed?).. bail out */
+              ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+              return wptid;
+            }
+
+            if (ptrace(PT_GET_SIGINFO, child, &child_psi, sizeof(child_psi)) == -1)
+              perror_with_name (("ptrace"));
+
+            if (child_psi.psi_siginfo.si_signo != SIGTRAP) {
+              /* Abnormal situation.. bail out */
+              ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+              return wptid;
+            }
+
+            if (child_psi.psi_siginfo.si_code != TRAP_CHLD) {
+              /* Abnormal situation.. bail out */
+              ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+              return wptid;
+            }
+
+            child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
+            nbsd_enable_proc_events (child_ptid.pid ());
+            ourstatus->value.related_pid = child_ptid;
+            break;
+          case PTRACE_VFORK_DONE:
+            ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
+            if (debug_nbsd_lwp)
+              fprintf_unfiltered (gdb_stdlog, "NLWP: reported VFORK_DONE parent=%d child=%d\n", pid, pst.pe_other_pid);
+            break;
+          case PTRACE_LWP_CREATE:
+            wptid = ptid_t (pid, pst.pe_lwp, 0);
+            if (in_thread_list (wptid)) {
+              /* Newborn reported after attach? */
+              ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+              return wptid;
+            }
+            add_thread (wptid);
+            ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
+            if (debug_nbsd_lwp)
+              fprintf_unfiltered (gdb_stdlog, "NLWP: created LWP %d\n", pst.pe_lwp);
+            break;
+          case PTRACE_LWP_EXIT:
+            wptid = ptid_t (pid, pst.pe_lwp, 0);
+            if (!in_thread_list (wptid)) {
+              /* Dead child reported after attach? */
+              ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+              return wptid;
+            }
+            delete_thread (find_thread_ptid (wptid));
+            ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
+            if (debug_nbsd_lwp)
+              fprintf_unfiltered (gdb_stdlog, "NLWP: exited LWP %d\n", pst.pe_lwp);
+            if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
+              perror_with_name (("ptrace"));
+            break;
+          }
+          break;
+        }
+        break;
+      }
+
+      if (debug_nbsd_lwp)
+	fprintf_unfiltered (gdb_stdlog,
+		"NLWP: nbsd_wait returned (%d, %ld, %ld)\n",
+		wptid.pid (), wptid.lwp (),
+		wptid.tid ());
+      inferior_ptid = wptid;
+
     }
-  while ((target_options & TARGET_WNOHANG) == 0
-	 && event_ptid == null_ptid
-	 && ourstatus->kind == TARGET_WAITKIND_IGNORE);
-
-  /* If at least one stop was reported, there may be more.  A single
-     SIGCHLD can signal more than one child stop.  */
-  if (target_is_async_p ()
-      && (target_options & TARGET_WNOHANG) != 0
-      && event_ptid != null_ptid)
-    async_file_mark ();
-
-  return event_ptid;
+    return wptid;
 }
 
 /* Send a signal to an LWP.  */
