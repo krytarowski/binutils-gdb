@@ -616,14 +616,15 @@ netbsd_wait (ptid_t ptid,
     debug_printf ("NLWP: calling super_wait (%d, %ld, %ld) target_options=%#x\n",
                         ptid.pid (), ptid.lwp (), ptid.tid (), target_options);
 
-  wptid = inf_ptrace_target::wait (ptid, ourstatus, target_options);
+  int status;
+  pid_t wpid = my_waitpid (ptid.pid(), &status, 0);
 
   if (debug_nbsd_lwp)
     debug_printf ( "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
                         ptid.pid (), ptid.lwp (), ptid.tid (),
 			target_options, ourstatus->kind);
 
-  if (ourstatus->kind == TARGET_WAITKIND_STOPPED)
+  if (WIFSTOPPED (status))
     {
       ptrace_state_t pst;
       ptrace_siginfo_t psi, child_psi;
