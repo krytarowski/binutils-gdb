@@ -504,7 +504,6 @@ netbsd_attach (unsigned long pid)
 {
   struct process_info *proc;
   struct thread_info *initial_thread;
-  ptid_t ptid = ptid_t (pid, pid, 0);
   int err;
 
   proc = netbsd_add_process (pid, 1);
@@ -525,171 +524,12 @@ netbsd_attach (unsigned long pid)
 }
 
 static int
-last_thread_of_process_p (int pid)
-{
-  bool seen_one = false;
-
-  thread_info *thread = find_thread (pid, [&] (thread_info *thr_arg)
-    {
-      if (!seen_one)
-	{
-	  /* This is the first thread of this process we see.  */
-	  seen_one = true;
-	  return false;
-	}
-      else
-	{
-	  /* This is the second thread of this process we see.  */
-	  return true;
-	}
-    });
-
-  return thread == NULL;
-}
-
-/* Kill LWP.  */
-
-static void
-netbsd_kill_one_lwp (struct lwp_info *lwp)
-{
-  struct thread_info *thr = get_lwp_thread (lwp);
-  int pid = lwpid_of (thr);
-
-  /* PTRACE_KILL is unreliable.  After stepping into a signal handler,
-     there is no signal context, and ptrace(PTRACE_KILL) (or
-     ptrace(PTRACE_CONT, SIGKILL), pretty much the same) acts like
-     ptrace(CONT, pid, 0,0) and just resumes the tracee.  A better
-     alternative is to kill with SIGKILL.  We only need one SIGKILL
-     per process, not one for each thread.  But since we still support
-     support debugging programs using raw clone without CLONE_THREAD,
-     we send one for each thread.  For years, we used PTRACE_KILL
-     only, so we're being a bit paranoid about some old kernels where
-     PTRACE_KILL might work better (dubious if there are any such, but
-     that's why it's paranoia), so we try SIGKILL first, PTRACE_KILL
-     second, and so we're fine everywhere.  */
-
-  errno = 0;
-  kill_lwp (pid, SIGKILL);
-  if (debug_threads)
-    {
-      int save_errno = errno;
-
-      debug_printf ("LKL:  kill_lwp (SIGKILL) %s, 0, 0 (%s)\n",
-		    target_pid_to_str (ptid_of (thr)),
-		    save_errno ? strerror (save_errno) : "OK");
-    }
-
-  errno = 0;
-  ptrace (PTRACE_KILL, pid, (PTRACE_TYPE_ARG3) 0, (PTRACE_TYPE_ARG4) 0);
-  if (debug_threads)
-    {
-      int save_errno = errno;
-
-      debug_printf ("LKL:  PTRACE_KILL %s, 0, 0 (%s)\n",
-		    target_pid_to_str (ptid_of (thr)),
-		    save_errno ? strerror (save_errno) : "OK");
-    }
-}
-
-/* Kill LWP and wait for it to die.  */
-
-static void
-kill_wait_lwp (struct lwp_info *lwp)
-{
-  struct thread_info *thr = get_lwp_thread (lwp);
-  int pid = ptid_of (thr).pid ();
-  int lwpid = ptid_of (thr).lwp ();
-  int wstat;
-  int res;
-
-  if (debug_threads)
-    debug_printf ("kwl: killing lwp %d, for pid: %d\n", lwpid, pid);
-
-  do
-    {
-      netbsd_kill_one_lwp (lwp);
-
-      /* Make sure it died.  Notes:
-
-	 - The loop is most likely unnecessary.
-
-	 - We don't use netbsd_wait_for_event as that could delete lwps
-	   while we're iterating over them.  We're not interested in
-	   any pending status at this point, only in making sure all
-	   wait status on the kernel side are collected until the
-	   process is reaped.
-
-	 - We don't use __WALL here as the __WALL emulation relies on
-	   SIGCHLD, and killing a stopped process doesn't generate
-	   one, nor an exit status.
-      */
-      res = my_waitpid (lwpid, &wstat, 0);
-      if (res == -1 && errno == ECHILD)
-	res = my_waitpid (lwpid, &wstat, __WCLONE);
-    } while (res > 0 && WIFSTOPPED (wstat));
-
-  /* Even if it was stopped, the child may have already disappeared.
-     E.g., if it was killed by SIGKILL.  */
-  if (res < 0 && errno != ECHILD)
-    perror_with_name ("kill_wait_lwp");
-}
-
-/* Callback for `for_each_thread'.  Kills an lwp of a given process,
-   except the leader.  */
-
-static void
-kill_one_lwp_callback (thread_info *thread, int pid)
-{
-  struct lwp_info *lwp = get_thread_lwp (thread);
-
-  /* We avoid killing the first thread here, because of a netbsd kernel (at
-     least 2.6.0-test7 through 2.6.8-rc4) bug; if we kill the parent before
-     the children get a chance to be reaped, it will remain a zombie
-     forever.  */
-
-  if (lwpid_of (thread) == pid)
-    {
-      if (debug_threads)
-	debug_printf ("lkop: is last of process %s\n",
-		      target_pid_to_str (thread->id));
-      return;
-    }
-
-  kill_wait_lwp (lwp);
-}
-
-static int
 netbsd_kill (process_info *process)
 {
   int pid = process->pid;
 
-  /* If we're killing a running inferior, make sure it is stopped
-     first, as PTRACE_KILL will not work otherwise.  */
-  stop_all_lwps (0, NULL);
+  ptrace(PT_KILL, pid, NULL, 0);
 
-  for_each_thread (pid, [&] (thread_info *thread)
-    {
-      kill_one_lwp_callback (thread, pid);
-    });
-
-  /* See the comment in netbsd_kill_one_lwp.  We did not kill the first
-     thread in the list, so do so now.  */
-  lwp_info *lwp = find_lwp_pid (ptid_t (pid));
-
-  if (lwp == NULL)
-    {
-      if (debug_threads)
-	debug_printf ("lk_1: cannot find lwp for pid: %d\n",
-		      pid);
-    }
-  else
-    kill_wait_lwp (lwp);
-
-  the_target->mourn (process);
-
-  /* Since we presently can only stop all lwps of all processes, we
-     need to unstop lwps of other processes.  */
-  unstop_all_lwps (0, NULL);
   return 0;
 }
 
