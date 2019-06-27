@@ -163,7 +163,6 @@ static void netbsd_mourn (struct process_info *process);
 static int netbsd_stopped_by_watchpoint (void);
 static int lwp_is_marked_dead (struct lwp_info *lwp);
 static int finish_step_over (struct lwp_info *lwp);
-static int kill_lwp (unsigned long lwpid, int signo);
 static int check_ptrace_stopped_lwp_gone (struct lwp_info *lp);
 static void proceed_one_lwp (thread_info *thread, lwp_info *except);
 
@@ -856,52 +855,10 @@ nbsd_add_threads (pid_t pid)
     }
 }
 
-/* Send a signal to an LWP.  */
-
-static int
-kill_lwp (unsigned long lwpid, int signo)
-{
-  int ret;
-
-  errno = 0;
-  ret = syscall (__NR_tkill, lwpid, signo);
-  if (errno == ENOSYS)
-    {
-      /* If tkill fails, then we are not using nptl threads, a
-	 configuration we no longer support.  */
-      perror_with_name (("tkill"));
-    }
-  return ret;
-}
-
 void
 netbsd_stop_lwp (struct lwp_info *lwp)
 {
   send_sigstop (lwp);
-}
-
-static void
-send_sigstop (struct lwp_info *lwp)
-{
-  int pid;
-
-  pid = lwpid_of (get_lwp_thread (lwp));
-
-  /* If we already have a pending stop signal for this process, don't
-     send another.  */
-  if (lwp->stop_expected)
-    {
-      if (debug_threads)
-	debug_printf ("Have pending sigstop for lwp %d\n", pid);
-
-      return;
-    }
-
-  if (debug_threads)
-    debug_printf ("Sending sigstop to lwp %d\n", pid);
-
-  lwp->stop_expected = 1;
-  kill_lwp (pid, SIGSTOP);
 }
 
 static void
