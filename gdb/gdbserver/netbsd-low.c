@@ -491,18 +491,9 @@ netbsd_create_inferior (const char *program,
 static void
 netbsd_post_create_inferior (void)
 {
-  struct lwp_info *lwp = get_thread_lwp (current_thread);
+  pid_t pid = inferior_ptid.pid ();
 
-  netbsd_arch_setup ();
-
-  if (lwp->must_set_ptrace_flags)
-    {
-      struct process_info *proc = current_process ();
-      int options = netbsd_low_ptrace_options (proc->attached);
-
-      netbsd_enable_event_reporting (lwpid_of (current_thread), options);
-      lwp->must_set_ptrace_flags = 0;
-    }
+  netbsd_enable_event_reporting (pid);
 }
 
 /* Attach to an inferior process.  Returns 0 on success, ERRNO on
