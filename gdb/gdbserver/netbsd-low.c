@@ -103,8 +103,6 @@ lwp_is_stepping (struct lwp_info *lwp)
 
 /* True if we're presently stabilizing threads (moving them out of
    jump pads).  */
-static int stabilizing_threads;
-
 static void netbsd_resume_one_lwp (struct lwp_info *lwp,
 				  int step, int signal, siginfo_t *info);
 static void netbsd_resume (struct thread_resume *resume_info, size_t n);
@@ -119,7 +117,6 @@ static void netbsd_mourn (struct process_info *process);
 static int netbsd_stopped_by_watchpoint (void);
 static void mark_lwp_dead (struct lwp_info *lwp, int wstat);
 static int lwp_is_marked_dead (struct lwp_info *lwp);
-static void proceed_all_lwps (void);
 static int finish_step_over (struct lwp_info *lwp);
 static int kill_lwp (unsigned long lwpid, int signo);
 static void enqueue_pending_signal (struct lwp_info *lwp, int signal, siginfo_t *info);
@@ -165,7 +162,6 @@ supports_breakpoints (void)
 #define target_is_async_p() (netbsd_event_pipe[0] != -1)
 
 static void send_sigstop (struct lwp_info *lwp);
-static void wait_for_sigstop (void);
 
 /* Return non-zero if HEADER is a 64-bit ELF file.  */
 
@@ -257,14 +253,6 @@ netbsd_add_process (int pid, int attached)
 }
 
 static CORE_ADDR get_pc (struct lwp_info *lwp);
-
-/* Call the target arch_setup function on the current thread.  */
-
-static void
-netbsd_arch_setup (void)
-{
-  the_low_target.arch_setup ();
-}
 
 /* Return the PC as read from the regcache of LWP, without any
    adjustment.  */
@@ -620,48 +608,6 @@ lwp_suspended_decr (struct lwp_info *lwp)
     }
 }
 
-/* Fetch the possibly triggered data watchpoint info and store it in
-   CHILD.
-
-   On some archs, like x86, that use debug registers to set
-   watchpoints, it's possible that the way to know which watched
-   address trapped, is to check the register that is used to select
-   which address to watch.  Problem is, between setting the watchpoint
-   and reading back which data address trapped, the user may change
-   the set of watchpoints, and, as a consequence, GDB changes the
-   debug registers in the inferior.  To avoid reading back a stale
-   stopped-data-address when that happens, we cache in LP the fact
-   that a watchpoint trapped, and the corresponding data address, as
-   soon as we see CHILD stop with a SIGTRAP.  If GDB changes the debug
-   registers meanwhile, we have the cached data we can rely on.  */
-
-static int
-check_stopped_by_watchpoint (struct lwp_info *child)
-{
-  if (the_low_target.stopped_by_watchpoint != NULL)
-    {
-      struct thread_info *saved_thread;
-
-      saved_thread = current_thread;
-      current_thread = get_lwp_thread (child);
-
-      if (the_low_target.stopped_by_watchpoint ())
-	{
-	  child->stop_reason = TARGET_STOPPED_BY_WATCHPOINT;
-
-	  if (the_low_target.stopped_data_address != NULL)
-	    child->stopped_data_address
-	      = the_low_target.stopped_data_address ();
-	  else
-	    child->stopped_data_address = 0;
-	}
-
-      current_thread = saved_thread;
-    }
-
-  return child->stop_reason == TARGET_STOPPED_BY_WATCHPOINT;
-}
-
 /* Return the ptrace options that we want to try to enable.  */
 
 static int
@@ -973,33 +919,6 @@ suspend_and_send_sigstop (thread_info *thread, lwp_info *except)
   send_sigstop (thread, except);
 }
 
-static void
-mark_lwp_dead (struct lwp_info *lwp, int wstat)
-{
-  /* Store the exit status for later.  */
-  lwp->status_pending_p = 1;
-  lwp->status_pending = wstat;
-
-  /* Store in waitstatus as well, as there's nothing else to process
-     for this event.  */
-  if (WIFEXITED (wstat))
-    {
-      lwp->waitstatus.kind = TARGET_WAITKIND_EXITED;
-      lwp->waitstatus.value.integer = WEXITSTATUS (wstat);
-    }
-  else if (WIFSIGNALED (wstat))
-    {
-      lwp->waitstatus.kind = TARGET_WAITKIND_SIGNALLED;
-      lwp->waitstatus.value.sig = gdb_signal_from_host (WTERMSIG (wstat));
-    }
-
-  /* Prevent trying to stop it.  */
-  lwp->stopped = 1;
-
-  /* No further stops are expected from a dead lwp.  */
-  lwp->stop_expected = 0;
-}
-
 /* Return true if LWP has exited already, and has a pending exit event
    to report to GDB.  */
 
@@ -1009,57 +928,6 @@ lwp_is_marked_dead (struct lwp_info *lwp)
   return (lwp->status_pending_p
 	  && (WIFEXITED (lwp->status_pending)
 	      || WIFSIGNALED (lwp->status_pending)));
-}
-
-/* Wait for all children to stop for the SIGSTOPs we just queued.  */
-
-static void
-wait_for_sigstop (void)
-{
-  struct thread_info *saved_thread;
-  ptid_t saved_tid;
-  int wstat;
-  int ret;
-
-  saved_thread = current_thread;
-  if (saved_thread != NULL)
-    saved_tid = saved_thread->id;
-  else
-    saved_tid = null_ptid; /* avoid bogus unused warning */
-
-  if (debug_threads)
-    debug_printf ("wait_for_sigstop: pulling events\n");
-
-  /* Passing NULL_PTID as filter indicates we want all events to be
-     left pending.  Eventually this returns when there are no
-     unwaited-for children left.  */
-  ret = netbsd_wait_for_event_filtered (minus_one_ptid, null_ptid,
-				       &wstat, __WALL);
-  gdb_assert (ret == -1);
-
-  if (saved_thread == NULL || netbsd_thread_alive (saved_tid))
-    current_thread = saved_thread;
-  else
-    {
-      if (debug_threads)
-	debug_printf ("Previously current thread died.\n");
-
-      /* We can't change the current inferior behind GDB's back,
-	 otherwise, a subsequent command may apply to the wrong
-	 process.  */
-      current_thread = NULL;
-    }
-}
-
-static bool
-lwp_running (thread_info *thread)
-{
-  struct lwp_info *lwp = get_thread_lwp (thread);
-
-  if (lwp_is_marked_dead (lwp))
-    return false;
-
-  return !lwp->stopped;
 }
 
 /* Stop all lwps that aren't stopped yet, except EXCEPT, if not NULL.
@@ -1097,7 +965,6 @@ stop_all_lwps (int suspend, struct lwp_info *except)
 	 send_sigstop (thread, except);
       });
 
-  wait_for_sigstop ();
   stopping_threads = NOT_STOPPING_THREADS;
 
   if (debug_threads)
@@ -1106,23 +973,6 @@ stop_all_lwps (int suspend, struct lwp_info *except)
 		    "back to !stopping\n");
       debug_exit ();
     }
-}
-
-/* Enqueue one signal in the chain of signals which need to be
-   delivered to this process on next resume.  */
-
-static void
-enqueue_pending_signal (struct lwp_info *lwp, int signal, siginfo_t *info)
-{
-  struct pending_signals *p_sig = XNEW (struct pending_signals);
-
-  p_sig->prev = lwp->pending_signals;
-  p_sig->signal = signal;
-  if (info == NULL)
-    memset (&p_sig->info, 0, sizeof (siginfo_t));
-  else
-    memcpy (&p_sig->info, info, sizeof (siginfo_t));
-  lwp->pending_signals = p_sig;
 }
 
 /* Install breakpoints for software single stepping.  */
@@ -1519,8 +1369,6 @@ start_step_over (struct lwp_info *lwp)
     debug_printf ("Starting step-over on LWP %ld.  Stopping all threads\n",
 		  lwpid_of (thread));
 
-  stop_all_lwps (1, lwp);
-
   if (lwp->suspended != 0)
     {
       internal_error (__FILE__, __LINE__,
@@ -1595,39 +1443,6 @@ finish_step_over (struct lwp_info *lwp)
     }
   else
     return 0;
-}
-
-/* If there's a step over in progress, wait until all threads stop
-   (that is, until the stepping thread finishes its step), and
-   unsuspend all lwps.  The stepping thread ends with its status
-   pending, which is processed later when we get back to processing
-   events.  */
-
-static void
-complete_ongoing_step_over (void)
-{
-  if (step_over_bkpt != null_ptid)
-    {
-      struct lwp_info *lwp;
-      int wstat;
-      int ret;
-
-      if (debug_threads)
-	debug_printf ("detach: step over in progress, finish it first\n");
-
-      /* Passing NULL_PTID as filter indicates we want all events to
-	 be left pending.  Eventually this returns when there are no
-	 unwaited-for children left.  */
-      ret = netbsd_wait_for_event_filtered (minus_one_ptid, null_ptid,
-					   &wstat, __WALL);
-      gdb_assert (ret == -1);
-
-      lwp = find_lwp_pid (step_over_bkpt);
-      if (lwp != NULL)
-	finish_step_over (lwp);
-      step_over_bkpt = null_ptid;
-      unsuspend_all_lwps (lwp);
-    }
 }
 
 static void
@@ -1857,244 +1672,6 @@ proceed_all_lwps (void)
       proceed_one_lwp (thread, NULL);
     });
 }
-
-/* Stopped LWPs that the client wanted to be running, that don't have
-   pending statuses, are set to run again, except for EXCEPT, if not
-   NULL.  This undoes a stop_all_lwps call.  */
-
-static void
-unstop_all_lwps (int unsuspend, struct lwp_info *except)
-{
-  if (debug_threads)
-    {
-      debug_enter ();
-      if (except)
-	debug_printf ("unstopping all lwps, except=(LWP %ld)\n",
-		      lwpid_of (get_lwp_thread (except)));
-      else
-	debug_printf ("unstopping all lwps\n");
-    }
-
-  if (unsuspend)
-    for_each_thread ([&] (thread_info *thread)
-      {
-	unsuspend_and_proceed_one_lwp (thread, except);
-      });
-  else
-    for_each_thread ([&] (thread_info *thread)
-      {
-	proceed_one_lwp (thread, except);
-      });
-
-  if (debug_threads)
-    {
-      debug_printf ("unstop_all_lwps done\n");
-      debug_exit ();
-    }
-}
-
-
-#ifdef HAVE_NETBSD_REGSETS
-
-#define use_netbsd_regsets 1
-
-/* Returns true if REGSET has been disabled.  */
-
-static int
-regset_disabled (struct regsets_info *info, struct regset_info *regset)
-{
-  return (info->disabled_regsets != NULL
-	  && info->disabled_regsets[regset - info->regsets]);
-}
-
-/* Disable REGSET.  */
-
-static void
-disable_regset (struct regsets_info *info, struct regset_info *regset)
-{
-  int dr_offset;
-
-  dr_offset = regset - info->regsets;
-  if (info->disabled_regsets == NULL)
-    info->disabled_regsets = (char *) xcalloc (1, info->num_regsets);
-  info->disabled_regsets[dr_offset] = 1;
-}
-
-static int
-regsets_fetch_inferior_registers (struct regsets_info *regsets_info,
-				  struct regcache *regcache)
-{
-  struct regset_info *regset;
-  int saw_general_regs = 0;
-  int pid;
-  struct iovec iov;
-
-  pid = lwpid_of (current_thread);
-  for (regset = regsets_info->regsets; regset->size >= 0; regset++)
-    {
-      void *buf, *data;
-      int nt_type, res;
-
-      if (regset->size == 0 || regset_disabled (regsets_info, regset))
-	continue;
-
-      buf = xmalloc (regset->size);
-
-      nt_type = regset->nt_type;
-      if (nt_type)
-	{
-	  iov.iov_base = buf;
-	  iov.iov_len = regset->size;
-	  data = (void *) &iov;
-	}
-      else
-	data = buf;
-
-#ifndef __sparc__
-      res = ptrace (regset->get_request, pid,
-		    (PTRACE_TYPE_ARG3) (long) nt_type, data);
-#else
-      res = ptrace (regset->get_request, pid, data, nt_type);
-#endif
-      if (res < 0)
-	{
-	  if (errno == EIO
-	      || (errno == EINVAL && regset->type == OPTIONAL_REGS))
-	    {
-	      /* If we get EIO on a regset, or an EINVAL and the regset is
-		 optional, do not try it again for this process mode.  */
-	      disable_regset (regsets_info, regset);
-	    }
-	  else if (errno == ENODATA)
-	    {
-	      /* ENODATA may be returned if the regset is currently
-		 not "active".  This can happen in normal operation,
-		 so suppress the warning in this case.  */
-	    }
-	  else if (errno == ESRCH)
-	    {
-	      /* At this point, ESRCH should mean the process is
-		 already gone, in which case we simply ignore attempts
-		 to read its registers.  */
-	    }
-	  else
-	    {
-	      char s[256];
-	      sprintf (s, "ptrace(regsets_fetch_inferior_registers) PID=%d",
-		       pid);
-	      perror (s);
-	    }
-	}
-      else
-	{
-	  if (regset->type == GENERAL_REGS)
-	    saw_general_regs = 1;
-	  regset->store_function (regcache, buf);
-	}
-      free (buf);
-    }
-  if (saw_general_regs)
-    return 0;
-  else
-    return 1;
-}
-
-static int
-regsets_store_inferior_registers (struct regsets_info *regsets_info,
-				  struct regcache *regcache)
-{
-  struct regset_info *regset;
-  int saw_general_regs = 0;
-  int pid;
-  struct iovec iov;
-
-  pid = lwpid_of (current_thread);
-  for (regset = regsets_info->regsets; regset->size >= 0; regset++)
-    {
-      void *buf, *data;
-      int nt_type, res;
-
-      if (regset->size == 0 || regset_disabled (regsets_info, regset)
-	  || regset->fill_function == NULL)
-	continue;
-
-      buf = xmalloc (regset->size);
-
-      /* First fill the buffer with the current register set contents,
-	 in case there are any items in the kernel's regset that are
-	 not in gdbserver's regcache.  */
-
-      nt_type = regset->nt_type;
-      if (nt_type)
-	{
-	  iov.iov_base = buf;
-	  iov.iov_len = regset->size;
-	  data = (void *) &iov;
-	}
-      else
-	data = buf;
-
-#ifndef __sparc__
-      res = ptrace (regset->get_request, pid,
-		    (PTRACE_TYPE_ARG3) (long) nt_type, data);
-#else
-      res = ptrace (regset->get_request, pid, data, nt_type);
-#endif
-
-      if (res == 0)
-	{
-	  /* Then overlay our cached registers on that.  */
-	  regset->fill_function (regcache, buf);
-
-	  /* Only now do we write the register set.  */
-#ifndef __sparc__
-	  res = ptrace (regset->set_request, pid,
-			(PTRACE_TYPE_ARG3) (long) nt_type, data);
-#else
-	  res = ptrace (regset->set_request, pid, data, nt_type);
-#endif
-	}
-
-      if (res < 0)
-	{
-	  if (errno == EIO
-	      || (errno == EINVAL && regset->type == OPTIONAL_REGS))
-	    {
-	      /* If we get EIO on a regset, or an EINVAL and the regset is
-		 optional, do not try it again for this process mode.  */
-	      disable_regset (regsets_info, regset);
-	    }
-	  else if (errno == ESRCH)
-	    {
-	      /* At this point, ESRCH should mean the process is
-		 already gone, in which case we simply ignore attempts
-		 to change its registers.  See also the related
-		 comment in netbsd_resume_one_lwp.  */
-	      free (buf);
-	      return 0;
-	    }
-	  else
-	    {
-	      perror ("Warning: ptrace(regsets_store_inferior_registers)");
-	    }
-	}
-      else if (regset->type == GENERAL_REGS)
-	saw_general_regs = 1;
-      free (buf);
-    }
-  if (saw_general_regs)
-    return 0;
-  else
-    return 1;
-}
-
-#else /* !HAVE_NETBSD_REGSETS */
-
-#define use_netbsd_regsets 0
-#define regsets_fetch_inferior_registers(regsets_info, regcache) 1
-#define regsets_store_inferior_registers(regsets_info, regcache) 1
-
-#endif
 
 /* Return 1 if register REGNO is supported by one of the regset ptrace
    calls or 0 if it has to be transferred individually.  */
@@ -3088,15 +2665,6 @@ netbsd_supports_catch_syscall (void)
 {
 
   return 1;
-}
-
-static int
-netbsd_get_ipa_tdesc_idx (void)
-{
-  if (the_low_target.get_ipa_tdesc_idx == NULL)
-    return 0;
-
-  return (*the_low_target.get_ipa_tdesc_idx) ();
 }
 
 static int
