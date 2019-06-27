@@ -1807,86 +1807,23 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
 static int
 netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int len)
 {
-  int i;
-  /* Round starting address down to longword boundary.  */
-  CORE_ADDR addr = memaddr & -(CORE_ADDR) sizeof (PTRACE_XFER_TYPE);
-  /* Round ending address up; get number of longwords that makes.  */
-  int count
-    = (((memaddr + len) - addr) + sizeof (PTRACE_XFER_TYPE) - 1)
-    / sizeof (PTRACE_XFER_TYPE);
+  unsigned char *src = myaddr;
+  struct ptrace_io_desc io;
 
-  /* Allocate buffer of that many longwords.  */
-  PTRACE_XFER_TYPE *buffer = XALLOCAVEC (PTRACE_XFER_TYPE, count);
+  int bytes_written = 0;
+  io.piod_op = PIOD_WRITE_D;
+  io.piod_len = len;
 
-  int pid = lwpid_of (current_thread);
+  do {
+    io.piod_addr = (void *)((char *)src + bytes_written);
+    io.piod_offs = (void *)(memaddr + bytes_written);
 
-  if (len == 0)
-    {
-      /* Zero length write always succeeds.  */
-      return 0;
-    }
-
-  if (debug_threads)
-    {
-      /* Dump up to four bytes.  */
-      char str[4 * 2 + 1];
-      char *p = str;
-      int dump = len < 4 ? len : 4;
-
-      for (i = 0; i < dump; i++)
-	{
-	  sprintf (p, "%02x", myaddr[i]);
-	  p += 2;
-	}
-      *p = '\0';
-
-      debug_printf ("Writing %s to 0x%08lx in process %d\n",
-		    str, (long) memaddr, pid);
-    }
-
-  /* Fill start and end extra bytes of buffer with existing memory data.  */
-
-  errno = 0;
-  /* Coerce the 3rd arg to a uintptr_t first to avoid potential gcc warning
-     about coercing an 8 byte integer to a 4 byte pointer.  */
-  buffer[0] = ptrace (PTRACE_PEEKTEXT, pid,
-		      (PTRACE_TYPE_ARG3) (uintptr_t) addr,
-		      (PTRACE_TYPE_ARG4) 0);
-  if (errno)
-    return errno;
-
-  if (count > 1)
-    {
-      errno = 0;
-      buffer[count - 1]
-	= ptrace (PTRACE_PEEKTEXT, pid,
-		  /* Coerce to a uintptr_t first to avoid potential gcc warning
-		     about coercing an 8 byte integer to a 4 byte pointer.  */
-		  (PTRACE_TYPE_ARG3) (uintptr_t) (addr + (count - 1)
-						  * sizeof (PTRACE_XFER_TYPE)),
-		  (PTRACE_TYPE_ARG4) 0);
-      if (errno)
-	return errno;
-    }
-
-  /* Copy data to be written over corresponding part of buffer.  */
-
-  memcpy ((char *) buffer + (memaddr & (sizeof (PTRACE_XFER_TYPE) - 1)),
-	  myaddr, len);
-
-  /* Write the entire buffer.  */
-
-  for (i = 0; i < count; i++, addr += sizeof (PTRACE_XFER_TYPE))
-    {
-      errno = 0;
-      ptrace (PTRACE_POKETEXT, pid,
-	      /* Coerce to a uintptr_t first to avoid potential gcc warning
-		 about coercing an 8 byte integer to a 4 byte pointer.  */
-	      (PTRACE_TYPE_ARG3) (uintptr_t) addr,
-	      (PTRACE_TYPE_ARG4) buffer[i]);
-      if (errno)
-	return errno;
-    }
+    int error = ptrace(PT_IO, current_ptid.pid (), &io, 0);
+    if (error == -1 || io.piod_len == 0)
+      return error;
+    bytes_written += io.piod_len;
+    io.piod_len = size - bytes_written;
+  } while (bytes_read < size);
 
   return 0;
 }
