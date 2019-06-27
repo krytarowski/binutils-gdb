@@ -963,7 +963,7 @@ netbsd_xfer_osdata_shm (struct buffer *buffer)
 	      int items_read;
 
 	      items_read = sscanf (buf,
-				   "%d %d %o %d %lld %lld %d %u %u %u %u %lld %lld %lld",
+				   "%ld %d %o %d %lld %lld %d %u %u %u %u %lld %lld %lld",
 				   &key, &shmid, &perms, &size,
 				   &cpid, &lpid,
 				   &nattch,
