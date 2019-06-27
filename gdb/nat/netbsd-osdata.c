@@ -21,7 +21,6 @@
 #include "netbsd-osdata.h"
 
 #include <sys/types.h>
-#include <sys/sysinfo.h>
 #include <ctype.h>
 #include <utmp.h>
 #include <time.h>
