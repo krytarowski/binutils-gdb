@@ -600,31 +600,6 @@ lwp_suspended_decr (struct lwp_info *lwp)
     }
 }
 
-/* Return the ptrace options that we want to try to enable.  */
-
-static int
-netbsd_low_ptrace_options (int attached)
-{
-  client_state &cs = get_client_state ();
-  int options = 0;
-
-  if (!attached)
-    options |= PTRACE_O_EXITKILL;
-
-  if (cs.report_fork_events)
-    options |= PTRACE_O_TRACEFORK;
-
-  if (cs.report_vfork_events)
-    options |= (PTRACE_O_TRACEVFORK | PTRACE_O_TRACEVFORKDONE);
-
-  if (cs.report_exec_events)
-    options |= PTRACE_O_TRACEEXEC;
-
-  options |= PTRACE_O_TRACESYSGOOD;
-
-  return options;
-}
-
 /* Return true if THREAD is doing hardware single step.  */
 
 static int
@@ -1666,8 +1641,6 @@ netbsd_register_in_regsets (const struct regs_info *regs_info, int regno)
 	      || (regs_info->regset_bitmap[index] & mask) != 0));
 }
 
-#ifdef HAVE_NETBSD_USRREGS
-
 static int
 register_addr (const struct usrregs_info *usrregs, int regnum)
 {
@@ -2437,34 +2410,9 @@ netbsd_handle_new_gdb_connection (void)
   /* Request that all the lwps reset their ptrace options.  */
   for_each_thread ([] (thread_info *thread)
     {
-      struct lwp_info *lwp = get_thread_lwp (thread);
-
-      if (!lwp->stopped)
-	{
-	  /* Stop the lwp so we can modify its ptrace options.  */
-	  lwp->must_set_ptrace_flags = 1;
-	  netbsd_stop_lwp (lwp);
-	}
-      else
-	{
-	  /* Already stopped; go ahead and set the ptrace options.  */
-	  struct process_info *proc = find_process_pid (pid_of (thread));
-	  int options = netbsd_low_ptrace_options (proc->attached);
-
-	  netbsd_enable_event_reporting (lwpid_of (thread), options);
-	  lwp->must_set_ptrace_flags = 0;
-	}
+      struct process_info *proc = find_process_pid (pid_of (thread));
+      netbsd_enable_event_reporting (proc->pid);
     });
-}
-
-static int
-netbsd_supports_disable_randomization (void)
-{
-#ifdef HAVE_PERSONALITY
-  return 1;
-#else
-  return 0;
-#endif
 }
 
 static int
@@ -2476,12 +2424,7 @@ netbsd_supports_agent (void)
 static int
 netbsd_supports_range_stepping (void)
 {
-  if (can_software_single_step ())
-    return 1;
-  if (*the_low_target.supports_range_stepping == NULL)
-    return 0;
-
-  return (*the_low_target.supports_range_stepping) ();
+  return 1;
 }
 
 /* Enumerate spufs IDs for process PID.  */
