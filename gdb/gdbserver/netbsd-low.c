@@ -428,7 +428,7 @@ add_lwp (ptid_t ptid)
 static void
 netbsd_ptrace_fun ()
 {
-  if (ptrace (PTRACE_TRACEME, 0, (PTRACE_TYPE_ARG3) 0,
+  if (ptrace (PT_TRACE_ME, 0, (PTRACE_TYPE_ARG3) 0,
 	      (PTRACE_TYPE_ARG4) 0) < 0)
     trace_start_error_with_name ("ptrace");
 
@@ -462,14 +462,11 @@ static int
 netbsd_create_inferior (const char *program,
 		       const std::vector<char *> &program_args)
 {
-  client_state &cs = get_client_state ();
   struct lwp_info *new_lwp;
   int pid;
   ptid_t ptid;
 
   {
-    maybe_disable_address_space_randomization restore_personality
-      (cs.disable_randomization);
     std::string str_program_args = stringify_argv (program_args);
 
     pid = fork_inferior (program,
