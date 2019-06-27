@@ -496,53 +496,6 @@ netbsd_post_create_inferior (void)
   netbsd_enable_event_reporting (pid);
 }
 
-/* Callback for netbsd_proc_attach_tgid_threads.  Attach to PTID if not
-   already attached.  Returns true if a new LWP is found, false
-   otherwise.  */
-
-static int
-attach_proc_task_lwp_callback (ptid_t ptid)
-{
-  /* Is this a new thread?  */
-  if (find_thread_ptid (ptid) == NULL)
-    {
-      int lwpid = ptid.lwp ();
-      int err;
-
-      if (debug_threads)
-	debug_printf ("Found new lwp %d\n", lwpid);
-
-      err = netbsd_attach_lwp (ptid);
-
-      /* Be quiet if we simply raced with the thread exiting.  EPERM
-	 is returned if the thread's task still exists, and is marked
-	 as exited or zombie, as well as other conditions, so in that
-	 case, confirm the status in /proc/PID/status.  */
-      if (err == ESRCH
-	  || (err == EPERM && netbsd_proc_pid_is_gone (lwpid)))
-	{
-	  if (debug_threads)
-	    {
-	      debug_printf ("Cannot attach to lwp %d: "
-			    "thread is gone (%d: %s)\n",
-			    lwpid, err, strerror (err));
-	    }
-	}
-      else if (err != 0)
-	{
-	  std::string reason
-	    = netbsd_ptrace_attach_fail_reason_string (ptid, err);
-
-	  warning (_("Cannot attach to lwp %d: %s"), lwpid, reason.c_str ());
-	}
-
-      return 1;
-    }
-  return 0;
-}
-
-static void async_file_mark (void);
-
 /* Attach to PID.  If PID is the tgid, attach to it and all
    of its threads.  */
 
@@ -567,17 +520,6 @@ netbsd_attach (unsigned long pid)
      process.  It will be collected by wait shortly.  */
   initial_thread = find_thread_ptid (ptid_t (pid, pid, 0));
   initial_thread->last_resume_kind = resume_stop;
-
-  /* We must attach to every LWP.  If /proc is mounted, use that to
-     find them now.  On the one hand, the inferior may be using raw
-     clone instead of using pthreads.  On the other hand, even if it
-     is using pthreads, GDB may not be connected yet (thread_db needs
-     to do symbol lookups, through qSymbol).  Also, thread_db walks
-     structures in the inferior's address space to find the list of
-     threads/LWPs, and those structures may well be corrupted.  Note
-     that once thread_db is loaded, we'll still use it to list threads
-     and associate pthread info with each LWP.  */
-  netbsd_proc_attach_tgid_threads (pid, attach_proc_task_lwp_callback);
 
   return 0;
 }
