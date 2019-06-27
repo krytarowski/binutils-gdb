@@ -21,49 +21,6 @@
 #include "netbsd-waitpid.h"
 #include "common/buffer.h"
 
-/* Stores the ptrace options supported by the running kernel.
-   A value of -1 means we did not check for features yet.  A value
-   of 0 means there are no supported features.  */
-static int supported_ptrace_options = -1;
-
-/* Find all possible reasons we could fail to attach PID and return these
-   as a string.  An empty string is returned if we didn't find any reason.  */
-
-std::string
-netbsd_ptrace_attach_fail_reason (pid_t pid)
-{
-  pid_t tracerpid = netbsd_proc_get_tracerpid_nowarn (pid);
-  std::string result;
-
-  if (tracerpid > 0)
-    string_appendf (result,
-		    _("process %d is already traced by process %d"),
-		    (int) pid, (int) tracerpid);
-
-  if (netbsd_proc_pid_is_zombie_nowarn (pid))
-    string_appendf (result,
-		    _("process %d is a zombie - the process has already "
-		      "terminated"),
-		    (int) pid);
-
-  return result;
-}
-
-/* See netbsd-ptrace.h.  */
-
-std::string
-netbsd_ptrace_attach_fail_reason_string (ptid_t ptid, int err)
-{
-  long lwpid = ptid.lwp ();
-  std::string reason = netbsd_ptrace_attach_fail_reason (lwpid);
-
-  if (!reason.empty ())
-    return string_printf ("%s (%d), %s", safe_strerror (err), err,
-			  reason.c_str ());
-  else
-    return string_printf ("%s (%d)", safe_strerror (err), err);
-}
-
 #if defined __i386__ || defined __x86_64__
 
 /* Address of the 'ret' instruction in asm code block below.  */
