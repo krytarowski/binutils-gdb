@@ -147,9 +147,6 @@ initialize_low (void)
   memset (&sigchld_action, 0, sizeof (sigchld_action));
   set_target_ops (&netbsd_target_ops);
 
-  netbsd_ptrace_init_warnings ();
-  netbsd_proc_init_warnings ();
-
   sigchld_action.sa_handler = sigchld_handler;
   sigemptyset (&sigchld_action.sa_mask);
   sigchld_action.sa_flags = SA_RESTART;
