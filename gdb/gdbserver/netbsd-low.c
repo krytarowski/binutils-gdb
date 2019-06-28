@@ -55,6 +55,8 @@
 #include <elf.h>
 
 
+int using_threads = 1;
+
 static struct target_ops netbsd_target_ops = {
   NULL,
 #if 0
@@ -145,6 +147,4 @@ initialize_low (void)
   set_target_ops (&netbsd_target_ops);
 
   initialize_low_arch ();
-
-  netbsd_check_ptrace_features ();
 }
