@@ -908,118 +908,6 @@ single_step (struct lwp_info* lwp)
   return step;
 }
 
-/* This function is called once per thread via for_each_thread.
-   We look up which resume request applies to THREAD and mark it with a
-   pointer to the appropriate resume request.
-
-   This algorithm is O(threads * resume elements), but resume elements
-   is small (and will remain small at least until GDB supports thread
-   suspension).  */
-
-static void
-netbsd_set_resume_request (thread_info *thread, thread_resume *resume, size_t n)
-{
-  struct lwp_info *lwp = get_thread_lwp (thread);
-
-  for (int ndx = 0; ndx < n; ndx++)
-    {
-      ptid_t ptid = resume[ndx].thread;
-      if (ptid == minus_one_ptid
-	  || ptid == thread->id
-	  /* Handle both 'pPID' and 'pPID.-1' as meaning 'all threads
-	     of PID'.  */
-	  || (ptid.pid () == pid_of (thread)
-	      && (ptid.is_pid ()
-		  || ptid.lwp () == -1)))
-	{
-	  if (resume[ndx].kind == resume_stop
-	      && thread->last_resume_kind == resume_stop)
-	    {
-	      if (debug_threads)
-		debug_printf ("already %s LWP %ld at GDB's request\n",
-			      (thread->last_status.kind
-			       == TARGET_WAITKIND_STOPPED)
-			      ? "stopped"
-			      : "stopping",
-			      lwpid_of (thread));
-
-	      continue;
-	    }
-
-	  /* Ignore (wildcard) resume requests for already-resumed
-	     threads.  */
-	  if (resume[ndx].kind != resume_stop
-	      && thread->last_resume_kind != resume_stop)
-	    {
-	      if (debug_threads)
-		debug_printf ("already %s LWP %ld at GDB's request\n",
-			      (thread->last_resume_kind
-			       == resume_step)
-			      ? "stepping"
-			      : "continuing",
-			      lwpid_of (thread));
-	      continue;
-	    }
-
-	  /* Don't let wildcard resumes resume fork children that GDB
-	     does not yet know are new fork children.  */
-	  if (lwp->fork_relative != NULL)
-	    {
-	      struct lwp_info *rel = lwp->fork_relative;
-
-	      if (rel->status_pending_p
-		  && (rel->waitstatus.kind == TARGET_WAITKIND_FORKED
-		      || rel->waitstatus.kind == TARGET_WAITKIND_VFORKED))
-		{
-		  if (debug_threads)
-		    debug_printf ("not resuming LWP %ld: has queued stop reply\n",
-				  lwpid_of (thread));
-		  continue;
-		}
-	    }
-
-	  /* If the thread has a pending event that has already been
-	     reported to GDBserver core, but GDB has not pulled the
-	     event out of the vStopped queue yet, likewise, ignore the
-	     (wildcard) resume request.  */
-	  if (in_queued_stop_replies (thread->id))
-	    {
-	      if (debug_threads)
-		debug_printf ("not resuming LWP %ld: has queued stop reply\n",
-			      lwpid_of (thread));
-	      continue;
-	    }
-
-	  lwp->resume = &resume[ndx];
-	  thread->last_resume_kind = lwp->resume->kind;
-
-	  lwp->step_range_start = lwp->resume->step_range_start;
-	  lwp->step_range_end = lwp->resume->step_range_end;
-
-	  /* If we had a deferred signal to report, dequeue one now.
-	     This can happen if LWP gets more than one signal while
-	     trying to get out of a jump pad.  */
-	  if (lwp->stopped
-	      && !lwp->status_pending_p
-	      && dequeue_one_deferred_signal (lwp, &lwp->status_pending))
-	    {
-	      lwp->status_pending_p = 1;
-
-	      if (debug_threads)
-		debug_printf ("Dequeueing deferred signal %d for LWP %ld, "
-			      "leaving status pending.\n",
-			      WSTOPSIG (lwp->status_pending),
-			      lwpid_of (thread));
-	    }
-
-	  return;
-	}
-    }
-
-  /* No resume action for this thread.  */
-  lwp->resume = NULL;
-}
-
 /* find_thread callback for netbsd_resume.  Return true if this lwp has an
    interesting status pending.  */
 
@@ -1034,142 +922,6 @@ resume_status_pending_p (thread_info *thread)
     return false;
 
   return thread_still_has_status_pending_p (thread);
-}
-
-/* Return 1 if this lwp that GDB wants running is stopped at an
-   internal breakpoint that we need to step over.  It assumes that any
-   required STOP_PC adjustment has already been propagated to the
-   inferior's regcache.  */
-
-static bool
-need_step_over_p (thread_info *thread)
-{
-  struct lwp_info *lwp = get_thread_lwp (thread);
-  struct thread_info *saved_thread;
-  CORE_ADDR pc;
-  struct process_info *proc = get_thread_process (thread);
-
-  /* GDBserver is skipping the extra traps from the wrapper program,
-     don't have to do step over.  */
-  if (proc->tdesc == NULL)
-    return false;
-
-  /* LWPs which will not be resumed are not interesting, because we
-     might not wait for them next time through netbsd_wait.  */
-
-  if (!lwp->stopped)
-    {
-      if (debug_threads)
-	debug_printf ("Need step over [LWP %ld]? Ignoring, not stopped\n",
-		      lwpid_of (thread));
-      return false;
-    }
-
-  if (thread->last_resume_kind == resume_stop)
-    {
-      if (debug_threads)
-	debug_printf ("Need step over [LWP %ld]? Ignoring, should remain"
-		      " stopped\n",
-		      lwpid_of (thread));
-      return false;
-    }
-
-  gdb_assert (lwp->suspended >= 0);
-
-  if (lwp->suspended)
-    {
-      if (debug_threads)
-	debug_printf ("Need step over [LWP %ld]? Ignoring, suspended\n",
-		      lwpid_of (thread));
-      return false;
-    }
-
-  if (lwp->status_pending_p)
-    {
-      if (debug_threads)
-	debug_printf ("Need step over [LWP %ld]? Ignoring, has pending"
-		      " status.\n",
-		      lwpid_of (thread));
-      return false;
-    }
-
-  /* Note: PC, not STOP_PC.  Either GDB has adjusted the PC already,
-     or we have.  */
-  pc = get_pc (lwp);
-
-  /* If the PC has changed since we stopped, then don't do anything,
-     and let the breakpoint/tracepoint be hit.  This happens if, for
-     instance, GDB handled the decr_pc_after_break subtraction itself,
-     GDB is OOL stepping this thread, or the user has issued a "jump"
-     command, or poked thread's registers herself.  */
-  if (pc != lwp->stop_pc)
-    {
-      if (debug_threads)
-	debug_printf ("Need step over [LWP %ld]? Cancelling, PC was changed. "
-		      "Old stop_pc was 0x%s, PC is now 0x%s\n",
-		      lwpid_of (thread),
-		      paddress (lwp->stop_pc), paddress (pc));
-      return false;
-    }
-
-  /* On software single step target, resume the inferior with signal
-     rather than stepping over.  */
-  if (can_software_single_step ()
-      && lwp->pending_signals != NULL
-      && lwp_signal_can_be_delivered (lwp))
-    {
-      if (debug_threads)
-	debug_printf ("Need step over [LWP %ld]? Ignoring, has pending"
-		      " signals.\n",
-		      lwpid_of (thread));
-
-      return false;
-    }
-
-  saved_thread = current_thread;
-  current_thread = thread;
-
-  /* We can only step over breakpoints we know about.  */
-  if (breakpoint_here (pc) || fast_tracepoint_jump_here (pc))
-    {
-      /* Don't step over a breakpoint that GDB expects to hit
-	 though.  If the condition is being evaluated on the target's side
-	 and it evaluate to false, step over this breakpoint as well.  */
-      if (gdb_breakpoint_here (pc)
-	  && gdb_condition_true_at_breakpoint (pc)
-	  && gdb_no_commands_at_breakpoint (pc))
-	{
-	  if (debug_threads)
-	    debug_printf ("Need step over [LWP %ld]? yes, but found"
-			  " GDB breakpoint at 0x%s; skipping step over\n",
-			  lwpid_of (thread), paddress (pc));
-
-	  current_thread = saved_thread;
-	  return false;
-	}
-      else
-	{
-	  if (debug_threads)
-	    debug_printf ("Need step over [LWP %ld]? yes, "
-			  "found breakpoint at 0x%s\n",
-			  lwpid_of (thread), paddress (pc));
-
-	  /* We've found an lwp that needs stepping over --- return 1 so
-	     that find_thread stops looking.  */
-	  current_thread = saved_thread;
-
-	  return true;
-	}
-    }
-
-  current_thread = saved_thread;
-
-  if (debug_threads)
-    debug_printf ("Need step over [LWP %ld]? No, no breakpoint found"
-		  " at 0x%s\n",
-		  lwpid_of (thread), paddress (pc));
-
-  return false;
 }
 
 /* Start a step-over operation on LWP.  When LWP stopped at a
@@ -1221,8 +973,6 @@ start_step_over (struct lwp_info *lwp)
 
   current_thread = saved_thread;
 
-  netbsd_resume_one_lwp (lwp, step, 0, NULL);
-
   /* Require next event from this LWP.  */
   step_over_bkpt = thread->id;
   return 1;
@@ -1239,63 +989,6 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
       debug_printf ("netbsd_resume:\n");
     }
 
-  for_each_thread ([&] (thread_info *thread)
-    {
-      netbsd_set_resume_request (thread, resume_info, n);
-    });
-
-  /* If there is a thread which would otherwise be resumed, which has
-     a pending status, then don't resume any threads - we can just
-     report the pending status.  Make sure to queue any signals that
-     would otherwise be sent.  In non-stop mode, we'll apply this
-     logic to each thread individually.  We consume all pending events
-     before considering to start a step-over (in all-stop).  */
-  bool any_pending = false;
-  if (!non_stop)
-    any_pending = find_thread (resume_status_pending_p) != NULL;
-
-  /* If there is a thread which would otherwise be resumed, which is
-     stopped at a breakpoint that needs stepping over, then don't
-     resume any threads - have it step over the breakpoint with all
-     other threads stopped, then resume all threads again.  Make sure
-     to queue any signals that would otherwise be delivered or
-     queued.  */
-  if (!any_pending && supports_breakpoints ())
-    need_step_over = find_thread (need_step_over_p);
-
-  bool leave_all_stopped = (need_step_over != NULL || any_pending);
-
-  if (debug_threads)
-    {
-      if (need_step_over != NULL)
-	debug_printf ("Not resuming all, need step over\n");
-      else if (any_pending)
-	debug_printf ("Not resuming, all-stop and found "
-		      "an LWP with pending status\n");
-      else
-	debug_printf ("Resuming, no pending status or step over needed\n");
-    }
-
-  /* Even if we're leaving threads stopped, queue all signals we'd
-     otherwise deliver.  */
-  for_each_thread ([&] (thread_info *thread)
-    {
-      netbsd_resume_one_thread (thread, leave_all_stopped);
-    });
-
-  if (need_step_over)
-    start_step_over (get_thread_lwp (need_step_over));
-
-  if (debug_threads)
-    {
-      debug_printf ("netbsd_resume done\n");
-      debug_exit ();
-    }
-
-  /* We may have events that were pending that can/should be sent to
-     the client now.  Trigger a netbsd_wait call.  */
-  if (target_is_async_p ())
-    async_file_mark ();
 }
 
 /* Return 1 if register REGNO is supported by one of the regset ptrace
@@ -1838,71 +1531,18 @@ sigchld_handler (int signo)
 	} while (0);
     }
 
-  if (target_is_async_p ())
-    async_file_mark (); /* trigger a netbsd_wait */
-
   errno = old_errno;
 }
 
 static int
 netbsd_supports_non_stop (void)
 {
-  return 1;
+  return 0;
 }
 
 static int
 netbsd_async (int enable)
 {
-  int previous = target_is_async_p ();
-
-  if (debug_threads)
-    debug_printf ("netbsd_async (%d), previous=%d\n",
-		  enable, previous);
-
-  if (previous != enable)
-    {
-      sigset_t mask;
-      sigemptyset (&mask);
-      sigaddset (&mask, SIGCHLD);
-
-      sigprocmask (SIG_BLOCK, &mask, NULL);
-
-      if (enable)
-	{
-	  if (pipe (netbsd_event_pipe) == -1)
-	    {
-	      netbsd_event_pipe[0] = -1;
-	      netbsd_event_pipe[1] = -1;
-	      sigprocmask (SIG_UNBLOCK, &mask, NULL);
-
-	      warning ("creating event pipe failed.");
-	      return previous;
-	    }
-
-	  fcntl (netbsd_event_pipe[0], F_SETFL, O_NONBLOCK);
-	  fcntl (netbsd_event_pipe[1], F_SETFL, O_NONBLOCK);
-
-	  /* Register the event loop handler.  */
-	  add_file_handler (netbsd_event_pipe[0],
-			    handle_target_event, NULL);
-
-	  /* Always trigger a netbsd_wait.  */
-	  async_file_mark ();
-	}
-      else
-	{
-	  delete_file_handler (netbsd_event_pipe[0]);
-
-	  close (netbsd_event_pipe[0]);
-	  close (netbsd_event_pipe[1]);
-	  netbsd_event_pipe[0] = -1;
-	  netbsd_event_pipe[1] = -1;
-	}
-
-      sigprocmask (SIG_UNBLOCK, &mask, NULL);
-    }
-
-  return previous;
 }
 
 static int
