@@ -992,7 +992,7 @@ netbsd_xfer_osdata_shm (struct buffer *buffer)
 		  buffer_xml_printf
 		    (buffer,
 		     "<item>"
-		     "<column name=\"key\">%d</column>"
+		     "<column name=\"key\">%ld</column>"
 		     "<column name=\"shmid\">%d</column>"
 		     "<column name=\"permissions\">%o</column>"
 		     "<column name=\"size\">%d</column>"
@@ -1056,7 +1056,7 @@ netbsd_xfer_osdata_sem (struct buffer *buffer)
 	      int items_read;
 
 	      items_read = sscanf (buf,
-				   "%d %d %o %u %d %d %d %d %lld %lld",
+				   "%ld %d %o %u %d %d %d %d %lld %lld",
 				   &key, &semid, &perms, &nsems,
 				   &uid, &gid, &cuid, &cgid,
 				   &otime, &ctime);
@@ -1078,7 +1078,7 @@ netbsd_xfer_osdata_sem (struct buffer *buffer)
 		  buffer_xml_printf
 		    (buffer,
 		     "<item>"
-		     "<column name=\"key\">%d</column>"
+		     "<column name=\"key\">%ld</column>"
 		     "<column name=\"semid\">%d</column>"
 		     "<column name=\"permissions\">%o</column>"
 		     "<column name=\"num semaphores\">%u</column>"
@@ -1135,7 +1135,7 @@ netbsd_xfer_osdata_msg (struct buffer *buffer)
 	      int items_read;
 
 	      items_read = sscanf (buf,
-				   "%d %d %o %u %u %lld %lld %d %d %d %d %lld %lld %lld",
+				   "%ld %d %o %u %u %lld %lld %d %d %d %d %lld %lld %lld",
 				   &key, &msqid, &perms, &cbytes, &qnum,
 				   &lspid, &lrpid, &uid, &gid, &cuid, &cgid,
 				   &stime, &rtime, &ctime);
@@ -1162,7 +1162,7 @@ netbsd_xfer_osdata_msg (struct buffer *buffer)
 		  buffer_xml_printf
 		    (buffer,
 		     "<item>"
-		     "<column name=\"key\">%d</column>"
+		     "<column name=\"key\">%ld</column>"
 		     "<column name=\"msqid\">%d</column>"
 		     "<column name=\"permissions\">%o</column>"
 		     "<column name=\"num used bytes\">%u</column>"
