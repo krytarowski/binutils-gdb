@@ -638,6 +638,8 @@ netbsd_wait (ptid_t ptid,
 
   int status;
   pid_t wpid = my_waitpid (ptid.pid(), &status, 0);
+  if (wpid != ptid.pid())
+	__builtin_trap();
 
   if (debug_nbsd_lwp)
     debug_printf ( "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
@@ -800,8 +802,7 @@ netbsd_wait (ptid_t ptid,
 		"NLWP: nbsd_wait returned (%d, %ld, %ld)\n",
 		wptid.pid (), wptid.lwp (),
 		wptid.tid ());
-      inferior_ptid = wptid;
-
+//      inferior_ptid = wptid;
     }
     return wptid;
 }
