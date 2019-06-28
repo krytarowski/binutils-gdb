@@ -788,7 +788,7 @@ netbsd_wait (ptid_t ptid,
             }
 
             child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
-            nbsd_enable_proc_events (child_ptid.pid ());
+            netbsd_enable_event_reporting (child_ptid.pid ());
             ourstatus->value.related_pid = child_ptid;
             break;
           case PTRACE_VFORK_DONE:
