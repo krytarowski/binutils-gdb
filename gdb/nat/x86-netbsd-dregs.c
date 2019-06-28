@@ -71,11 +71,12 @@ x86_netbsd_dr_set (ptid_t ptid, int regnum, unsigned long value)
 static int
 update_debug_registers_callback (struct lwp_info *lwp)
 {
+#if 0
   lwp_set_debug_registers_changed (lwp, 1);
 
   if (!lwp_is_stopped (lwp))
     netbsd_stop_lwp (lwp);
-
+#endif
   /* Continue the iteration.  */
   return 0;
 }
@@ -85,9 +86,12 @@ update_debug_registers_callback (struct lwp_info *lwp)
 CORE_ADDR
 x86_netbsd_dr_get_addr (int regnum)
 {
+#if 0
   gdb_assert (DR_FIRSTADDR <= regnum && regnum <= DR_LASTADDR);
 
   return x86_netbsd_dr_get (current_lwp_ptid (), regnum);
+#endif
+  return 0;
 }
 
 /* See nat/x86-netbsd-dregs.h.  */
@@ -95,11 +99,13 @@ x86_netbsd_dr_get_addr (int regnum)
 void
 x86_netbsd_dr_set_addr (int regnum, CORE_ADDR addr)
 {
+#if 0
   ptid_t pid_ptid = ptid_t (current_lwp_ptid ().pid ());
 
   gdb_assert (DR_FIRSTADDR <= regnum && regnum <= DR_LASTADDR);
 
   iterate_over_lwps (pid_ptid, update_debug_registers_callback);
+#endif
 }
 
 /* See nat/x86-netbsd-dregs.h.  */
@@ -107,7 +113,9 @@ x86_netbsd_dr_set_addr (int regnum, CORE_ADDR addr)
 unsigned long
 x86_netbsd_dr_get_control (void)
 {
+#if 0
   return x86_netbsd_dr_get (current_lwp_ptid (), DR_CONTROL);
+#endif
 }
 
 /* See nat/x86-netbsd-dregs.h.  */
@@ -115,9 +123,11 @@ x86_netbsd_dr_get_control (void)
 void
 x86_netbsd_dr_set_control (unsigned long control)
 {
+#if 0
   ptid_t pid_ptid = ptid_t (current_lwp_ptid ().pid ());
 
   iterate_over_lwps (pid_ptid, update_debug_registers_callback);
+#endif
 }
 
 /* See nat/x86-netbsd-dregs.h.  */
@@ -125,7 +135,10 @@ x86_netbsd_dr_set_control (unsigned long control)
 unsigned long
 x86_netbsd_dr_get_status (void)
 {
+#if 0
   return x86_netbsd_dr_get (current_lwp_ptid (), DR_STATUS);
+#endif
+  return 0;
 }
 
 /* See nat/x86-netbsd-dregs.h.  */
@@ -133,6 +146,7 @@ x86_netbsd_dr_get_status (void)
 void
 x86_netbsd_update_debug_registers (struct lwp_info *lwp)
 {
+#if 0
   ptid_t ptid = ptid_of_lwp (lwp);
   int clear_status = 0;
 
@@ -165,4 +179,5 @@ x86_netbsd_update_debug_registers (struct lwp_info *lwp)
   if (clear_status
       || lwp_stop_reason (lwp) == TARGET_STOPPED_BY_WATCHPOINT)
     x86_netbsd_dr_set (ptid, DR_STATUS, 0);
+#endif
 }
