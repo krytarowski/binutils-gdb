@@ -638,8 +638,7 @@ netbsd_wait (ptid_t ptid,
 
   int status;
   pid_t wpid = my_waitpid (ptid.pid(), &status, 0);
-  if (wpid != ptid.pid())
-	__builtin_trap();
+  gdb_assert (wpid == ptid.pid());
 
   if (debug_nbsd_lwp)
     debug_printf ( "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
@@ -864,59 +863,6 @@ suspend_and_send_sigstop (thread_info *thread, lwp_info *except)
 
 /* Return true if LWP has exited already, and has a pending exit event
    to report to GDB.  */
-
-static int
-lwp_is_marked_dead (struct lwp_info *lwp)
-{
-  return (lwp->status_pending_p
-	  && (WIFEXITED (lwp->status_pending)
-	      || WIFSIGNALED (lwp->status_pending)));
-}
-
-/* Stop all lwps that aren't stopped yet, except EXCEPT, if not NULL.
-   If SUSPEND, then also increase the suspend count of every LWP,
-   except EXCEPT.  */
-
-static void
-stop_all_lwps (int suspend, struct lwp_info *except)
-{
-  /* Should not be called recursively.  */
-  gdb_assert (stopping_threads == NOT_STOPPING_THREADS);
-
-  if (debug_threads)
-    {
-      debug_enter ();
-      debug_printf ("stop_all_lwps (%s, except=%s)\n",
-		    suspend ? "stop-and-suspend" : "stop",
-		    except != NULL
-		    ? target_pid_to_str (ptid_of (get_lwp_thread (except)))
-		    : "none");
-    }
-
-  stopping_threads = (suspend
-		      ? STOPPING_AND_SUSPENDING_THREADS
-		      : STOPPING_THREADS);
-
-  if (suspend)
-    for_each_thread ([&] (thread_info *thread)
-      {
-	suspend_and_send_sigstop (thread, except);
-      });
-  else
-    for_each_thread ([&] (thread_info *thread)
-      {
-	 send_sigstop (thread, except);
-      });
-
-  stopping_threads = NOT_STOPPING_THREADS;
-
-  if (debug_threads)
-    {
-      debug_printf ("stop_all_lwps done, setting stopping_threads "
-		    "back to !stopping\n");
-      debug_exit ();
-    }
-}
 
 /* Install breakpoints for software single stepping.  */
 
