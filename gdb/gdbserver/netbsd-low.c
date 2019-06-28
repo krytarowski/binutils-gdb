@@ -632,23 +632,6 @@ lwp_suspended_inc (struct lwp_info *lwp)
     }
 }
 
-/* Return true if THREAD is doing hardware single step.  */
-
-static int
-maybe_hw_step (struct thread_info *thread)
-{
-  if (can_hardware_single_step ())
-    return 1;
-  else
-    {
-      /* GDBserver must insert single-step breakpoint for software
-	 single step.  */
-      gdb_assert (has_single_step_breakpoints (thread));
-      return 0;
-    }
-}
-
-
 static ptid_t
 netbsd_wait (ptid_t ptid,
 	    struct target_waitstatus *ourstatus, int target_options)
@@ -3111,26 +3094,6 @@ netbsd_get_auxv (int wordsize, CORE_ADDR match, CORE_ADDR *valp)
     }
 
   return 0;
-}
-
-/* See netbsd-low.h.  */
-
-CORE_ADDR
-netbsd_get_hwcap (int wordsize)
-{
-  CORE_ADDR hwcap = 0;
-  netbsd_get_auxv (wordsize, AT_HWCAP, &hwcap);
-  return hwcap;
-}
-
-/* See netbsd-low.h.  */
-
-CORE_ADDR
-netbsd_get_hwcap2 (int wordsize)
-{
-  CORE_ADDR hwcap2 = 0;
-  netbsd_get_auxv (wordsize, AT_HWCAP2, &hwcap2);
-  return hwcap2;
 }
 
 static struct target_ops netbsd_target_ops = {
