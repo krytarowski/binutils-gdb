@@ -839,6 +839,7 @@ netbsd_wait (ptid_t ptid,
     return wptid;
 }
 
+#if 0
 static void
 nbsd_add_threads (pid_t pid)
 {
@@ -854,6 +855,7 @@ nbsd_add_threads (pid_t pid)
         add_thread (ptid);
     }
 }
+#endif
 
 void
 netbsd_stop_lwp (struct lwp_info *lwp)
@@ -1444,112 +1446,6 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
      the client now.  Trigger a netbsd_wait call.  */
   if (target_is_async_p ())
     async_file_mark ();
-}
-
-/* This function is called once per thread.  We check the thread's
-   last resume request, which will tell us whether to resume, step, or
-   leave the thread stopped.  Any signal the client requested to be
-   delivered has already been enqueued at this point.
-
-   If any thread that GDB wants running is stopped at an internal
-   breakpoint that needs stepping over, we start a step-over operation
-   on that particular thread, and leave all others stopped.  */
-
-static void
-proceed_one_lwp (thread_info *thread, lwp_info *except)
-{
-  struct lwp_info *lwp = get_thread_lwp (thread);
-  int step;
-
-  if (lwp == except)
-    return;
-
-  if (debug_threads)
-    debug_printf ("proceed_one_lwp: lwp %ld\n", lwpid_of (thread));
-
-  if (!lwp->stopped)
-    {
-      if (debug_threads)
-	debug_printf ("   LWP %ld already running\n", lwpid_of (thread));
-      return;
-    }
-
-  if (thread->last_resume_kind == resume_stop
-      && thread->last_status.kind != TARGET_WAITKIND_IGNORE)
-    {
-      if (debug_threads)
-	debug_printf ("   client wants LWP to remain %ld stopped\n",
-		      lwpid_of (thread));
-      return;
-    }
-
-  if (lwp->status_pending_p)
-    {
-      if (debug_threads)
-	debug_printf ("   LWP %ld has pending status, leaving stopped\n",
-		      lwpid_of (thread));
-      return;
-    }
-
-  gdb_assert (lwp->suspended >= 0);
-
-  if (lwp->suspended)
-    {
-      if (debug_threads)
-	debug_printf ("   LWP %ld is suspended\n", lwpid_of (thread));
-      return;
-    }
-
-  if (thread->last_resume_kind == resume_stop
-      && lwp->pending_signals_to_report == NULL
-      && (lwp->collecting_fast_tracepoint
-	  == fast_tpoint_collect_result::not_collecting))
-    {
-      /* We haven't reported this LWP as stopped yet (otherwise, the
-	 last_status.kind check above would catch it, and we wouldn't
-	 reach here.  This LWP may have been momentarily paused by a
-	 stop_all_lwps call while handling for example, another LWP's
-	 step-over.  In that case, the pending expected SIGSTOP signal
-	 that was queued at vCont;t handling time will have already
-	 been consumed by wait_for_sigstop, and so we need to requeue
-	 another one here.  Note that if the LWP already has a SIGSTOP
-	 pending, this is a no-op.  */
-
-      if (debug_threads)
-	debug_printf ("Client wants LWP %ld to stop. "
-		      "Making sure it has a SIGSTOP pending\n",
-		      lwpid_of (thread));
-
-      send_sigstop (lwp);
-    }
-
-  if (thread->last_resume_kind == resume_step)
-    {
-      if (debug_threads)
-	debug_printf ("   stepping LWP %ld, client wants it stepping\n",
-		      lwpid_of (thread));
-
-      /* If resume_step is requested by GDB, install single-step
-	 breakpoints when the thread is about to be actually resumed if
-	 the single-step breakpoints weren't removed.  */
-      if (can_software_single_step ()
-	  && !has_single_step_breakpoints (thread))
-	install_software_single_step_breakpoints (lwp);
-
-      step = maybe_hw_step (thread);
-    }
-  else if (lwp->bp_reinsert != 0)
-    {
-      if (debug_threads)
-	debug_printf ("   stepping LWP %ld, reinsert set\n",
-		      lwpid_of (thread));
-
-      step = maybe_hw_step (thread);
-    }
-  else
-    step = 0;
-
-  netbsd_resume_one_lwp (lwp, step, 0, NULL);
 }
 
 /* Return 1 if register REGNO is supported by one of the regset ptrace
