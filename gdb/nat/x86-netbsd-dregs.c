@@ -25,7 +25,7 @@
 #include "nat/x86-netbsd-dregs.h"
 
 /* Get debug register REGNUM value from the LWP specified by PTID.  */
-
+#if 0
 static unsigned long
 x86_netbsd_dr_get (ptid_t ptid, int regnum)
 {
@@ -41,9 +41,10 @@ x86_netbsd_dr_get (ptid_t ptid, int regnum)
 
   return dbr.dr[regnum];
 }
+#endif
 
 /* Set debug register REGNUM to VALUE in the LWP specified by PTID.  */
-
+#if 0
 static void
 x86_netbsd_dr_set (ptid_t ptid, int regnum, unsigned long value)
 {
@@ -62,12 +63,14 @@ x86_netbsd_dr_set (ptid_t ptid, int regnum, unsigned long value)
   if (ptrace (PT_SETDBREGS, pid, &dbr, tid) == -1)
     perror_with_name (_("Couldn't write debug register"));
 }
+#endif
 
 /* Callback for iterate_over_lwps.  Mark that our local mirror of
    LWP's debug registers has been changed, and cause LWP to stop if
    it isn't already.  Values are written from our local mirror to
    the actual debug registers immediately prior to LWP resuming.  */
 
+#if 0
 static int
 update_debug_registers_callback (struct lwp_info *lwp)
 {
@@ -80,6 +83,7 @@ update_debug_registers_callback (struct lwp_info *lwp)
   /* Continue the iteration.  */
   return 0;
 }
+#endif
 
 /* See nat/x86-netbsd-dregs.h.  */
 
@@ -116,6 +120,7 @@ x86_netbsd_dr_get_control (void)
 #if 0
   return x86_netbsd_dr_get (current_lwp_ptid (), DR_CONTROL);
 #endif
+  return 0;
 }
 
 /* See nat/x86-netbsd-dregs.h.  */
