@@ -80,6 +80,7 @@ in_thread_list (ptid_t ptid)
 
 #define in_thread_list(a) 0 /* XXX */
 #define thread_change_ptid(a, b) (void)0 /* XXX */
+//#define add_thread(a) /* XXX */
 
 static char *
 pid_to_exec_file (int pid)
@@ -319,23 +320,6 @@ get_pc (struct lwp_info *lwp)
 
   current_thread = saved_thread;
   return pc;
-}
-
-static struct lwp_info *
-add_lwp (ptid_t ptid)
-{
-  struct lwp_info *lwp;
-
-  lwp = XCNEW (struct lwp_info);
-
-  lwp->waitstatus.kind = TARGET_WAITKIND_IGNORE;
-
-  lwp->thread = add_thread (ptid, lwp);
-
-  if (the_low_target.new_thread != NULL)
-    the_low_target.new_thread (lwp);
-
-  return lwp;
 }
 
 /* Callback to be used when calling fork_inferior, responsible for
@@ -786,7 +770,7 @@ netbsd_wait (ptid_t ptid,
               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
               return wptid;
             }
-            add_thread (wptid);
+//            add_thread (wptid);
             ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
             if (debug_nbsd_lwp)
               debug_printf ( "NLWP: created LWP %d\n", pst.pe_lwp);
@@ -798,7 +782,7 @@ netbsd_wait (ptid_t ptid,
               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
               return wptid;
             }
-            delete_thread (find_thread_ptid (wptid));
+//            delete_thread (find_thread_ptid (wptid));
             ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
             if (debug_nbsd_lwp)
               debug_printf ( "NLWP: exited LWP %d\n", pst.pe_lwp);
