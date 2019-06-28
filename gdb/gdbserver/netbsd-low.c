@@ -940,7 +940,6 @@ start_step_over (struct lwp_info *lwp)
   struct thread_info *thread = get_lwp_thread (lwp);
   struct thread_info *saved_thread;
   CORE_ADDR pc;
-  int step;
 
   if (debug_threads)
     debug_printf ("Starting step-over on LWP %ld.  Stopping all threads\n",
@@ -981,8 +980,6 @@ start_step_over (struct lwp_info *lwp)
 static void
 netbsd_resume (struct thread_resume *resume_info, size_t n)
 {
-  struct thread_info *need_step_over = NULL;
-
   if (debug_threads)
     {
       debug_enter ();
@@ -1000,8 +997,7 @@ netbsd_register_in_regsets (const struct regs_info *regs_info, int regno)
   unsigned char mask = 1 << (regno % 8);
   size_t index = regno / 8;
 
-  return (use_netbsd_regsets
-	  && (regs_info->regset_bitmap == NULL
+  return ((regs_info->regset_bitmap == NULL
 	      || (regs_info->regset_bitmap[index] & mask) != 0));
 }
 
@@ -2633,18 +2629,8 @@ static struct target_ops netbsd_target_ops = {
   netbsd_supports_hardware_single_step,
   netbsd_stopped_by_watchpoint,
   netbsd_stopped_data_address,
-#if defined(__UCLIBC__) && defined(HAS_NOMMU)	      \
-    && defined(PT_TEXT_ADDR) && defined(PT_DATA_ADDR) \
-    && defined(PT_TEXT_END_ADDR)
-  netbsd_read_offsets,
-#else
   NULL,
-#endif
-#ifdef USE_THREAD_DB
-  thread_db_get_tls_address,
-#else
   NULL,
-#endif
   netbsd_qxfer_spu,
   hostio_last_error_from_errno,
   netbsd_qxfer_osdata,
@@ -2657,11 +2643,7 @@ static struct target_ops netbsd_target_ops = {
   netbsd_supports_vfork_events,
   netbsd_supports_exec_events,
   netbsd_handle_new_gdb_connection,
-#ifdef USE_THREAD_DB
-  thread_db_handle_monitor_command,
-#else
   NULL,
-#endif
   netbsd_common_core_of_thread,
   netbsd_read_loadmap,
   netbsd_process_qsupported,
@@ -2697,17 +2679,6 @@ static struct target_ops netbsd_target_ops = {
   NULL,
   NULL,
 };
-
-#ifdef HAVE_NETBSD_REGSETS
-void
-initialize_regsets_info (struct regsets_info *info)
-{
-  for (info->num_regsets = 0;
-       info->regsets[info->num_regsets].size >= 0;
-       info->num_regsets++)
-    ;
-}
-#endif
 
 void
 initialize_low (void)
