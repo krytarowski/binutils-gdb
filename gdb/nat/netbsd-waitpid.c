@@ -23,6 +23,8 @@
 #include "netbsd-waitpid.h"
 #include "common/gdb_wait.h"
 
+#include <signal.h>
+
 /* Convert wait status STATUS to a string.  Used for printing debug
    messages only.  */
 
@@ -33,10 +35,6 @@ status_to_str (int status)
 
   if (WIFSTOPPED (status))
     {
-      if (WSTOPSIG (status) == SYSCALL_SIGTRAP)
-	snprintf (buf, sizeof (buf), "%s (stopped at syscall)",
-		  strsignal (SIGTRAP));
-      else
 	snprintf (buf, sizeof (buf), "%s (stopped)",
 		  strsignal (WSTOPSIG (status)));
     }
