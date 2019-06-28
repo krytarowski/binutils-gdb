@@ -456,32 +456,14 @@ static const struct target_desc *
 x86_netbsd_read_description (void)
 {
   unsigned int machine;
-  int is_elf64;
   int tid;
 
   tid = lwpid_of (current_thread);
 
-  is_elf64 = netbsd_pid_exe_is_elf_64_file (tid, &machine);
-
-  if (sizeof (void *) == 4)
-    {
-      if (is_elf64 > 0)
-       error (_("Can't debug 64-bit process with 32-bit GDBserver"));
-#ifndef __x86_64__
-      else if (machine == EM_X86_64)
-       error (_("Can't debug x86-64 process with 32-bit GDBserver"));
-#endif
-    }
-
   if (!use_xml)
     {
       /* Don't use XML.  */
-#ifdef __x86_64__
-      if (machine == EM_X86_64)
 	return tdesc_amd64_netbsd_no_xml;
-      else
-#endif
-	return tdesc_i386_netbsd_no_xml;
     }
 
   gdb_assert_not_reached ("failed to return tdesc");

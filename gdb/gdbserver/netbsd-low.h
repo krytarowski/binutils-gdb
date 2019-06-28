@@ -393,8 +393,6 @@ struct lwp_info
   struct arch_lwp_info *arch_private;
 };
 
-int netbsd_pid_exe_is_elf_64_file (int pid, unsigned int *machine);
-
 /* Attach to PTID.  Returns 0 on success, non-zero otherwise (an
    errno).  */
 int netbsd_attach_lwp (ptid_t ptid);
