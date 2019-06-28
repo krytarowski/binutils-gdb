@@ -35,10 +35,12 @@ struct arch_lwp_info
 void
 lwp_set_debug_registers_changed (struct lwp_info *lwp, int value)
 {
+#if 0
   if (lwp_arch_private_info (lwp) == NULL)
     lwp_set_arch_private_info (lwp, XCNEW (struct arch_lwp_info));
 
   lwp_arch_private_info (lwp)->debug_registers_changed = value;
+#endif
 }
 
 /* See nat/x86-netbsd.h.  */

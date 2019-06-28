@@ -455,11 +455,6 @@ static int use_xml;
 static const struct target_desc *
 x86_netbsd_read_description (void)
 {
-  unsigned int machine;
-  int tid;
-
-  tid = lwpid_of (current_thread);
-
   if (!use_xml)
     {
       /* Don't use XML.  */
