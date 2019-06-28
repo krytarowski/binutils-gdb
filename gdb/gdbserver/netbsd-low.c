@@ -142,15 +142,7 @@ static struct target_ops netbsd_target_ops = {
 void
 initialize_low (void)
 {
-  struct sigaction sigchld_action;
-
-  memset (&sigchld_action, 0, sizeof (sigchld_action));
   set_target_ops (&netbsd_target_ops);
-
-  sigchld_action.sa_handler = sigchld_handler;
-  sigemptyset (&sigchld_action.sa_mask);
-  sigchld_action.sa_flags = SA_RESTART;
-  sigaction (SIGCHLD, &sigchld_action, NULL);
 
   initialize_low_arch ();
 
