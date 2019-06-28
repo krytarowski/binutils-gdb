@@ -48,6 +48,7 @@ lwp_set_debug_registers_changed (struct lwp_info *lwp, int value)
 int
 lwp_debug_registers_changed (struct lwp_info *lwp)
 {
+#if 0
   struct arch_lwp_info *info = lwp_arch_private_info (lwp);
 
   /* NULL means either that this is the main thread still going
@@ -57,6 +58,7 @@ lwp_debug_registers_changed (struct lwp_info *lwp)
     return 0;
 
   return info->debug_registers_changed;
+#endif
 }
 
 /* See nat/x86-netbsd.h.  */
