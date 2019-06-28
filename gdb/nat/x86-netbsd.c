@@ -59,6 +59,7 @@ lwp_debug_registers_changed (struct lwp_info *lwp)
 
   return info->debug_registers_changed;
 #endif
+  return 0;
 }
 
 /* See nat/x86-netbsd.h.  */
