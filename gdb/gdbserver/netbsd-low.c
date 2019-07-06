@@ -57,10 +57,101 @@
 
 int using_threads = 1;
 
+/* Add a process to the common process list, and set its private
+   data.  */
+
+static struct process_info *
+netbsd_add_process (int pid, int attached)
+{
+  struct process_info *proc;
+    
+  proc = add_process (pid, attached);
+  proc->priv = XCNEW (struct process_info_private);
+
+  if (the_low_target.new_process != NULL)  
+    proc->priv->arch_private = the_low_target.new_process ();
+
+  return proc;
+}
+
+/* Callback to be used when calling fork_inferior, responsible for
+   actually initiating the tracing of the inferior.  */
+
+static void
+netbsd_ptrace_fun ()
+{
+  if (ptrace (PT_TRACE_ME, 0, NULL, 0) < 0)
+    trace_start_error_with_name ("ptrace");
+
+  if (setpgid (0, 0) < 0)
+    trace_start_error_with_name ("setpgid");
+
+  /* If GDBserver is connected to gdb via stdio, redirect the inferior's
+     stdout to stderr so that inferior i/o doesn't corrupt the connection.
+     Also, redirect stdin to /dev/null.  */
+  if (remote_connection_is_stdio ())
+    {
+      if (close (0) < 0)
+        trace_start_error_with_name ("close");
+      if (open ("/dev/null", O_RDONLY) < 0)
+        trace_start_error_with_name ("open");
+      if (dup2 (2, 1) < 0)
+        trace_start_error_with_name ("dup2");
+      if (write (2, "stdin/stdout redirected\n",
+                 sizeof ("stdin/stdout redirected\n") - 1) < 0)
+        {
+          /* Errors ignored.  */;
+        }
+    }
+}
+
+static struct lwp_info *
+add_lwp (ptid_t ptid)
+{         
+  struct lwp_info *lwp;
+   
+  lwp = XCNEW (struct lwp_info);
+        
+  lwp->waitstatus.kind = TARGET_WAITKIND_IGNORE;
+        
+  lwp->thread = add_thread (ptid, lwp);
+        
+  if (the_low_target.new_thread != NULL)
+    the_low_target.new_thread (lwp);
+  
+  return lwp;
+}
+
+/* Start an inferior process and returns its pid.
+   PROGRAM is the name of the program to be started, and PROGRAM_ARGS
+   are its arguments.  */
+
+static int
+netbsd_create_inferior (const char *program,
+                       const std::vector<char *> &program_args)
+{
+  std::string str_program_args = stringify_argv (program_args);
+
+  pid_t pid = fork_inferior (program,
+                       str_program_args.c_str (),
+                       get_environ ()->envp (), netbsd_ptrace_fun,
+                       NULL, NULL, NULL, NULL);
+
+  netbsd_add_process (pid, 0);
+
+  ptid_t ptid = ptid_t (pid, 0, 0);
+  lwp_info *new_lwp = add_lwp (ptid);
+  new_lwp->must_set_ptrace_flags = 1;
+
+  post_fork_inferior (pid, program);
+
+  return pid;
+}
+
+
 static struct target_ops netbsd_target_ops = {
-  NULL,
-#if 0
   netbsd_create_inferior,
+#if 0
   netbsd_post_create_inferior,
   netbsd_attach,
   netbsd_kill,
