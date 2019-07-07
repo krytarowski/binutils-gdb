@@ -213,6 +213,20 @@ netbsd_wait (ptid_t ptid,
                          ptid.pid (), ptid.lwp (), ptid.tid (),
                         target_options, ourstatus->kind);
 
+  if (WIFEXITED (status))
+    {
+      ourstatus->kind = TARGET_WAITKIND_EXITED;
+      ourstatus->value.integer = WEXITSTATUS (status);
+      return ptid;
+    }
+
+  if (WIFSIGNALED (status))
+    {
+      ourstatus->kind = TARGET_WAITKIND_SIGNALLED;
+      ourstatus->value.sig = gdb_signal_from_host (WTERMSIG (status));
+      return ptid;
+    }
+
   if (WIFSTOPPED (status))
     {
       ptrace_state_t pst;
