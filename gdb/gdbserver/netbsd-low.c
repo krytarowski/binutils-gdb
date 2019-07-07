@@ -183,7 +183,7 @@ netbsd_wait (ptid_t ptid,
     *
     * This avoids events reported in random order reported for FORK / VFORK.
     *
-    * Polling on traced parent always simplifies the code.
+    * Polling on traced parent always, simplifies the code.
     */
    ptid = current_ptid;
 
@@ -192,8 +192,20 @@ netbsd_wait (ptid_t ptid,
                          ptid.pid (), ptid.lwp (), ptid.tid (), target_options);
 
    int status;
-   pid_t wpid = my_waitpid (ptid.pid(), &status, 0);
-   gdb_assert (wpid == ptid.pid());
+
+   int options = 0;
+   if (target_options & TARGET_WNOHANG)
+     options |= WNOHANG;
+
+   pid_t wpid = my_waitpid (ptid.pid(), &status, options);
+
+   if (wpid == 0) {
+     gdb_assert (target_options & TARGET_WNOHANG);
+
+     ourstatus->kind = TARGET_WAITKIND_IGNORE;
+
+     return null_ptid;
+   }
 
    if (debug_nbsd_lwp)
      debug_printf ( "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
