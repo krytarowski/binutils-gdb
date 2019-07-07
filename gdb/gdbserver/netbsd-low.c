@@ -148,6 +148,25 @@ netbsd_create_inferior (const char *program,
   return pid;
 }
 
+/* Return the name of a file that can be opened to get the symbols for
+   the child process identified by PID.  */
+
+static char *
+pid_to_exec_file (pid_t pid)
+{
+  static const int name[] = {
+    CTL_KERN, KERN_PROC_ARGS, pid, KERN_PROC_PATHNAME,
+  };
+  static char path[MAXPATHLEN];
+  size_t len;
+
+  len = sizeof(path);
+  if (sysctl(name, __arraycount(name), path, &len, NULL, 0) == -1)
+    return NULL;
+
+  return path;
+}
+
 static ptid_t
 netbsd_wait (ptid_t ptid,
            struct target_waitstatus *ourstatus, int target_options)
@@ -156,7 +175,6 @@ netbsd_wait (ptid_t ptid,
 
 #define in_thread_list(a) false
 #define thread_change_ptid(a,b)
-#define pid_to_exec_file(a) ""
    const bool debug_nbsd_lwp = false;
 
    /*
