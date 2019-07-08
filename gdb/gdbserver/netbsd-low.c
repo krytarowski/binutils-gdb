@@ -271,6 +271,7 @@ netbsd_wait (ptid_t ptid,
             case TRAP_TRACE:
 //            lp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
               break;
+#endif
             case TRAP_SCE:
               ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
               ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
@@ -279,7 +280,6 @@ netbsd_wait (ptid_t ptid,
               ourstatus->kind = TARGET_WAITKIND_SYSCALL_RETURN;
               ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
               break;
-#endif
             case TRAP_EXEC:
               ourstatus->kind = TARGET_WAITKIND_EXECD;
               ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (pid));
