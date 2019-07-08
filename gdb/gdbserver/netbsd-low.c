@@ -281,11 +281,11 @@ netbsd_wait (ptid_t ptid,
               break;
             case TRAP_EXEC:
               ourstatus->kind = TARGET_WAITKIND_EXECD;
-              ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (pid));
+              ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (wpid));
               break;
             case TRAP_LWP:
             case TRAP_CHLD:
-              if (ptrace(PT_GET_PROCESS_STATE, pid, &pst, sizeof(pst)) == -1)
+              if (ptrace(PT_GET_PROCESS_STATE, wpid, &pst, sizeof(pst)) == -1)
                 perror_with_name (("ptrace"));
               switch (pst.pe_report_event)
                 {
@@ -336,7 +336,7 @@ netbsd_wait (ptid_t ptid,
                   ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
                   break;
                 case PTRACE_LWP_CREATE:
-                  wptid = ptid_t (pid, pst.pe_lwp, 0);
+                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
                   if (!find_thread_ptid (wptid))
                     {
                       add_thread (wptid, NULL);
@@ -344,7 +344,7 @@ netbsd_wait (ptid_t ptid,
                   ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
                   break;
                 case PTRACE_LWP_EXIT:
-                  wptid = ptid_t (pid, pst.pe_lwp, 0);
+                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
                   thread_info *thread = find_thread_ptid (wptid);
                   if (!thread)
                     {
