@@ -173,9 +173,6 @@ netbsd_wait (ptid_t ptid,
 {
   ptid_t wptid;
 
-#define in_thread_list(a) false
-#define thread_change_ptid(a,b)
-
   /*
    * Always perform polling on exact PID, overwrite the default polling on
    * WAIT_ANY.
@@ -186,10 +183,6 @@ netbsd_wait (ptid_t ptid,
    */
   ptid = current_ptid;
 
-  if (debug_threads)
-    debug_printf ("NLWP: calling super_wait (%d, %ld, %ld) target_options=%#x\n",
-                       ptid.pid (), ptid.lwp (), ptid.tid (), target_options);
-
   int status;
 
   int options = 0;
@@ -198,20 +191,14 @@ netbsd_wait (ptid_t ptid,
 
   pid_t wpid = my_waitpid (ptid.pid(), &status, options);
 
-  if (wpid == 0) {
-    gdb_assert (target_options & TARGET_WNOHANG);
-
-    ourstatus->kind = TARGET_WAITKIND_IGNORE;
-
-    return null_ptid;
-  }
+  if (wpid == 0)
+    {
+      gdb_assert (target_options & TARGET_WNOHANG);
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return null_ptid;
+    }
 
   gdb_assert (wpid != -1);
-
-  if (debug_threads)
-    debug_printf ( "NLWP: returned from super_wait (%d, %ld, %ld) target_options=%#x with ourstatus->kind=%d\n",
-                         ptid.pid (), ptid.lwp (), ptid.tid (),
-                        target_options, ourstatus->kind);
 
   if (WIFEXITED (status))
     {
@@ -227,6 +214,12 @@ netbsd_wait (ptid_t ptid,
       return ptid;
     }
 
+  if (WIFCONTINUED(status))
+    {
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return null_ptid;
+    }
+
   if (WIFSTOPPED (status))
     {
       ptrace_state_t pst;
@@ -240,151 +233,137 @@ netbsd_wait (ptid_t ptid,
       if (ptrace(PT_GET_SIGINFO, pid, &psi, sizeof(psi)) == -1)
         perror_with_name (("ptrace"));
       /* For whole-process signals pick random thread */
-      if (psi.psi_lwpid == 0) {
-        // XXX: Is this always valid?
-        lwp = lwpid_of (current_thread);
-      } else {
-        lwp = psi.psi_lwpid;
-      }
+      if (psi.psi_lwpid == 0)
+        {
+          // XXX: Is this always valid?
+          lwp = lwpid_of (current_thread);
+        }
+      else
+        {
+          lwp = psi.psi_lwpid;
+        }
 
       wptid = ptid_t (pid, lwp, 0);
 
-      /* Set LWP in the process */
-      if (in_thread_list (ptid_t (pid))) {
-          if (debug_threads)
-             debug_printf (
-                                 "NLWP: using LWP %d for first thread\n",
-                                 lwp);
-           thread_change_ptid (ptid_t (pid), wptid);                                                                                                 
-       }
+      if (!find_thread_ptid (wptid))
+        {
+          add_thread (wptid, NULL);
+        }
 
-       if (debug_threads)
-          debug_printf (
-                              "NLWP: received signal=%d si_code=%d in process=%d lwp=%d\n",
-                              psi.psi_siginfo.si_signo, psi.psi_siginfo.si_code, pid, lwp);
+      switch (psi.psi_siginfo.si_signo)
+        {
+        case SIGTRAP:
+          switch (psi.psi_siginfo.si_code)
+            {
+            case TRAP_BRKPT:
+//            lp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
+              break;
+            case TRAP_DBREG:
+//            if (hardware_breakpoint_inserted_here_p (get_regcache_aspace (regcache), pc))
+//              lp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
+//            else
+//              lp->stop_reason = TARGET_STOPPED_BY_WATCHPOINT;
+              break;
+            case TRAP_TRACE:
+//            lp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
+              break;
+            case TRAP_SCE:
+              ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
+              ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
+              break;
+            case TRAP_SCX:
+              ourstatus->kind = TARGET_WAITKIND_SYSCALL_RETURN;
+              ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
+              break;
+            case TRAP_EXEC:
+              ourstatus->kind = TARGET_WAITKIND_EXECD;
+              ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (pid));
+              break;
+            case TRAP_LWP:
+            case TRAP_CHLD:
+              if (ptrace(PT_GET_PROCESS_STATE, pid, &pst, sizeof(pst)) == -1)
+                perror_with_name (("ptrace"));
+              switch (pst.pe_report_event)
+                {
+                case PTRACE_FORK:
+                case PTRACE_VFORK:
+                  if (pst.pe_report_event == PTRACE_FORK)
+                    ourstatus->kind = TARGET_WAITKIND_FORKED;
+                  else
+                    ourstatus->kind = TARGET_WAITKIND_VFORKED;
+                  child = pst.pe_other_pid;
 
-       switch (psi.psi_siginfo.si_signo) {
-       case SIGTRAP:
-         switch (psi.psi_siginfo.si_code) {
-         case TRAP_BRKPT:
-//          lp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
-           break;
-         case TRAP_DBREG:
-//          if (hardware_breakpoint_inserted_here_p (get_regcache_aspace (regcache), pc))
-//            lp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
-//          else
-//            lp->stop_reason = TARGET_STOPPED_BY_WATCHPOINT;
-           break;
-         case TRAP_TRACE:
-//          lp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
-           break;
-         case TRAP_SCE:
-           ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
-           ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
-           break;
-         case TRAP_SCX:
-           ourstatus->kind = TARGET_WAITKIND_SYSCALL_RETURN;
-           ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
-           break;
-         case TRAP_EXEC:
-           ourstatus->kind = TARGET_WAITKIND_EXECD;
-           ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (pid));
-           break;
-         case TRAP_LWP:
-         case TRAP_CHLD:
-           if (ptrace(PT_GET_PROCESS_STATE, pid, &pst, sizeof(pst)) == -1)
-             perror_with_name (("ptrace"));
-           switch (pst.pe_report_event) {
-           case PTRACE_FORK:
-           case PTRACE_VFORK:
-             if (pst.pe_report_event == PTRACE_FORK)
-               ourstatus->kind = TARGET_WAITKIND_FORKED;
-             else
-               ourstatus->kind = TARGET_WAITKIND_VFORKED;
-             child = pst.pe_other_pid;
+                  wchild = waitpid (child, &status, 0);
 
-             if (debug_threads)
-               debug_printf (
-                                   "NLWP: registered %s event for PID %d\n",
-                                   (pst.pe_report_event == PTRACE_FORK) ? "FORK" : "VFORK", child);
+                  if (wchild == -1)
+                    perror_with_name (("waitpid"));
 
-             wchild = waitpid (child, &status, 0);
+                  gdb_assert (wchild == child);
 
-             if (wchild == -1)
-               perror_with_name (("waitpid"));
+                  if (!WIFSTOPPED(status))
+                    {
+                      /* Abnormal situation (SIGKILLed?).. bail out */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
 
-             gdb_assert (wchild == child);
+                  if (ptrace(PT_GET_SIGINFO, child, &child_psi, sizeof(child_psi)) == -1)
+                    perror_with_name (("ptrace"));
 
-             if (!WIFSTOPPED(status)) {
-               /* Abnormal situation (SIGKILLed?).. bail out */
-               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
-               return wptid;
-             }
+                  if (child_psi.psi_siginfo.si_signo != SIGTRAP)
+                    {
+                      /* Abnormal situation.. bail out */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
 
-             if (ptrace(PT_GET_SIGINFO, child, &child_psi, sizeof(child_psi)) == -1)
-               perror_with_name (("ptrace"));
+                  if (child_psi.psi_siginfo.si_code != TRAP_CHLD)
+                    {
+                      /* Abnormal situation.. bail out */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
 
-             if (child_psi.psi_siginfo.si_signo != SIGTRAP) {
-               /* Abnormal situation.. bail out */
-               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
-               return wptid;
-             }
+                  child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
+                  netbsd_enable_event_reporting (child_ptid.pid ());
+                  ourstatus->value.related_pid = child_ptid;
+                  break;
+                case PTRACE_VFORK_DONE:
+                  ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
+                  break;
+                case PTRACE_LWP_CREATE:
+                  wptid = ptid_t (pid, pst.pe_lwp, 0);
+                  if (!find_thread_ptid (wptid))
+                    {
+                      /* Newborn reported after attach? */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
+                  add_thread (wptid);
+                  ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
+                  break;
+                case PTRACE_LWP_EXIT:
+                  wptid = ptid_t (pid, pst.pe_lwp, 0);
+                  thread_info *thread = find_thread_ptid (wptid);
+                  if (!thread)
+                    {
+                      /* Dead child reported after attach? */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
+                  remove_thread (thread);
+                  ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
 
-             if (child_psi.psi_siginfo.si_code != TRAP_CHLD) {
-               /* Abnormal situation.. bail out */
-               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
-               return wptid;
-             }
-
-             child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
-             netbsd_enable_event_reporting (child_ptid.pid ());
-             ourstatus->value.related_pid = child_ptid;
-             break;
-           case PTRACE_VFORK_DONE:
-             ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
-             if (debug_threads)
-               debug_printf ( "NLWP: reported VFORK_DONE parent=%d child=%d\n", pid, pst.pe_other_pid);
-             break;
-           case PTRACE_LWP_CREATE:
-             wptid = ptid_t (pid, pst.pe_lwp, 0);
-             if (in_thread_list (wptid)) {
-               /* Newborn reported after attach? */
-               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
-               return wptid;
-             }
-//            add_thread (wptid);
-             ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
-             if (debug_threads)
-               debug_printf ( "NLWP: created LWP %d\n", pst.pe_lwp);
-             break;
-           case PTRACE_LWP_EXIT:
-             wptid = ptid_t (pid, pst.pe_lwp, 0);
-             if (!in_thread_list (wptid)) {
-               /* Dead child reported after attach? */
-               ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
-               return wptid;
-             }
-//            delete_thread (find_thread_ptid (wptid));
-             ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
-             if (debug_threads)
-               debug_printf ( "NLWP: exited LWP %d\n", pst.pe_lwp);
-             if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
-               perror_with_name (("ptrace"));
-             break;
-           }
-           break;
-         }
-         break;
-       }
-
-       if (debug_threads)
-        debug_printf (
-                "NLWP: nbsd_wait returned (%d, %ld, %ld)\n",
-                wptid.pid (), wptid.lwp (),
-                wptid.tid ());
-//      inferior_ptid = wptid;
-     }
-     return wptid;
+                  if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
+                    perror_with_name (("ptrace"));
+                  break;
+                }
+              break;
+            }
+          break;
+        }
+    }
+  return wptid;
 }
 
 static struct target_ops netbsd_target_ops = {
