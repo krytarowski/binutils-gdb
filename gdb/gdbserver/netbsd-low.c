@@ -245,7 +245,7 @@ netbsd_wait (ptid_t ptid,
           lwp = psi.psi_lwpid;
         }
 
-      wptid = ptid_t (pid, lwp, 0);
+      wptid = ptid_t (wpid, lwp, 0);
 
       if (!find_thread_ptid (wptid))
         {
