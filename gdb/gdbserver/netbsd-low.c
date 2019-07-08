@@ -354,8 +354,10 @@ netbsd_wait (ptid_t ptid,
                   remove_thread (thread);
                   ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
 
+#if 0
                   if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
                     perror_with_name (("ptrace"));
+#endif
                   break;
                 }
               break;
