@@ -339,7 +339,7 @@ netbsd_wait (ptid_t ptid,
                       ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
                       return wptid;
                     }
-                  add_thread (wptid);
+                  add_thread (wptid, NULL);
                   ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
                   break;
                 case PTRACE_LWP_EXIT:
