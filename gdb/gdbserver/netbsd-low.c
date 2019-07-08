@@ -224,16 +224,15 @@ netbsd_wait (ptid_t ptid,
     {
       ptrace_state_t pst;
       ptrace_siginfo_t psi, child_psi;
-      pid_t pid, child, wchild;
+      pid_t child, wchild;
       ptid_t child_ptid;
       lwpid_t lwp;
 
       ourstatus->kind = TARGET_WAITKIND_STOPPED;
       ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (status));
 
-      pid = wptid.pid ();
       // Find the lwp that caused the wait status change
-      if (ptrace(PT_GET_SIGINFO, pid, &psi, sizeof(psi)) == -1)
+      if (ptrace(PT_GET_SIGINFO, wpid, &psi, sizeof(psi)) == -1)
         perror_with_name (("ptrace"));
       /* For whole-process signals pick random thread */
       if (psi.psi_lwpid == 0)
