@@ -148,6 +148,40 @@ netbsd_create_inferior (const char *program,
   return pid;
 }
 
+static void
+netbsd_resume (struct thread_resume *resume_info, size_t n)
+{
+  ptid_t ptid = resume_info[0].thread;
+  const int request
+    = (resume_info[0].kind == resume_step
+       ? (n == 1 ? PTRACE_SINGLESTEP_ONE : PTRACE_SINGLESTEP)
+       : PTRACE_CONT);
+  const int signal = resume_info[0].sig;
+
+  /* If given a minus_one_ptid, then try using the current_process'                                                                                          
+     private->last_wait_event_ptid.  On most LynxOS versions,
+     using any of the process' thread works well enough, but
+     LynxOS 178 is a little more sensitive, and triggers some
+     unexpected signals (Eg SIG61) when we resume the inferior
+     using a different thread.  */
+  if (ptid == minus_one_ptid)
+    ptid = current_process()->priv->last_wait_event_ptid;
+
+  /* The ptid might still be minus_one_ptid; this can happen between                                                                                         
+     the moment we create the inferior or attach to a process, and
+     the moment we resume its execution for the first time.  It is
+     fine to use the current_thread's ptid in those cases.  */
+  if (ptid == minus_one_ptid)
+    ptid = ptid_of (current_thread);
+
+  regcache_invalidate_pid (ptid.pid ());
+
+  errno = 0;                                                                                                                                                 
+  lynx_ptrace (request, ptid, 1, signal, 0);
+  if (errno)
+    perror_with_name ("ptrace");
+}
+
 /* Return the name of a file that can be opened to get the symbols for
    the child process identified by PID.  */
 
@@ -378,7 +412,7 @@ static struct target_ops netbsd_target_ops = {
   NULL, //   netbsd_mourn,
   NULL, //   netbsd_join,
   NULL, //   netbsd_thread_alive,
-  NULL, //   netbsd_resume,
+  netbsd_resume,
   netbsd_wait,
 #if 0
   netbsd_post_create_inferior,
