@@ -2437,8 +2437,7 @@ initialize_low_arch (void)
 #ifdef __x86_64__
   tdesc_amd64_netbsd_no_xml = allocate_target_description ();
   copy_target_description (tdesc_amd64_netbsd_no_xml,
-                           amd64_netbsd_read_description (X86_XSTATE_SSE_MASK,
-                                                         false));
+                           amd64_netbsd_read_description (X86_XSTATE_SSE_MASK));
   tdesc_amd64_netbsd_no_xml->xmltarget = xmltarget_amd64_netbsd_no_xml;
 #endif
 
