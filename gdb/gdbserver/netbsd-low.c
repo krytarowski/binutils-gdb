@@ -152,32 +152,56 @@ static void
 netbsd_resume (struct thread_resume *resume_info, size_t n)
 {
   ptid_t ptid = resume_info[0].thread;
-  const int request
-    = (resume_info[0].kind == resume_step
-       ? (n == 1 ? PTRACE_SINGLESTEP_ONE : PTRACE_SINGLESTEP)
-       : PTRACE_CONT);
   const int signal = resume_info[0].sig;
 
-  /* If given a minus_one_ptid, then try using the current_process'                                                                                          
-     private->last_wait_event_ptid.  On most LynxOS versions,
-     using any of the process' thread works well enough, but
-     LynxOS 178 is a little more sensitive, and triggers some
-     unexpected signals (Eg SIG61) when we resume the inferior
-     using a different thread.  */
-  if (ptid == minus_one_ptid)
-    ptid = current_process()->priv->last_wait_event_ptid;
-
-  /* The ptid might still be minus_one_ptid; this can happen between                                                                                         
-     the moment we create the inferior or attach to a process, and
-     the moment we resume its execution for the first time.  It is
-     fine to use the current_thread's ptid in those cases.  */
   if (ptid == minus_one_ptid)
     ptid = ptid_of (current_thread);
 
+  
   regcache_invalidate_pid (ptid.pid ());
 
+  if (resume_info[0].kind == resume_step)
+    {
+      if (n == 1)
+        {
+          struct ptrace_lwpinfo pl;
+          int val;
+          pl.pl_lwpid = 0;
+          while ((val = ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
+            pl.pl_lwpid != 0)
+           {
+              if (pl.pl_lwpid == ptid.lwp())
+                ptrace (PT_SETSTEP, ptid.pid(), NULL, pl.pl_lwpid);
+              else
+                ptrace (PT_CLEARSTEP, ptid.pid(), NULL, pl.pl_lwpid);
+           }
+        }
+      else
+        {
+          struct ptrace_lwpinfo pl;
+          int val;
+          pl.pl_lwpid = 0;
+          while ((val = ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
+            pl.pl_lwpid != 0)
+           {
+              ptrace (PT_SETSTEP, ptid.pid(), NULL, pl.pl_lwpid);
+           }
+        }
+    }
+  else
+    {
+      struct ptrace_lwpinfo pl;
+      int val;
+      pl.pl_lwpid = 0;
+      while ((val = ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
+        pl.pl_lwpid != 0)
+        {
+          ptrace (PT_CLEARSTEP, ptid.pid(), NULL, pl.pl_lwpid);
+        }
+    }
+
   errno = 0;                                                                                                                                                 
-  lynx_ptrace (request, ptid, 1, signal, 0);
+  ptrace (PT_CONTINUE, ptid.pid(), (void *)1, signal);
   if (errno)
     perror_with_name ("ptrace");
 }
