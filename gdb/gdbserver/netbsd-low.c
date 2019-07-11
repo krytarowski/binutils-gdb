@@ -57,7 +57,7 @@
 
 int using_threads = 1;
 
-const struct target_desc *netbsd_tdesc;
+//const struct target_desc *netbsd_tdesc;
 
 /* Add a process to the common process list, and set its private
    data.  */
@@ -68,7 +68,9 @@ netbsd_add_process (int pid, int attached)
   struct process_info *proc;
     
   proc = add_process (pid, attached);
-  proc->tdesc = netbsd_tdesc;
+//  proc->tdesc = netbsd_tdesc;
+//  proc->tdesc = amd64_create_target_description (X86_XSTATE_SSE_MASK, false,
+//                                           false, false);
   proc->priv = XCNEW (struct process_info_private);
 
   if (the_low_target.new_process != NULL)  

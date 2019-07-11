@@ -455,6 +455,7 @@ static int use_xml;
 static const struct target_desc *
 x86_netbsd_read_description (void)
 {
+  __builtin_trap();
   if (!use_xml)
     {
       /* Don't use XML.  */
@@ -2434,6 +2435,9 @@ initialize_low_arch (void)
   /* Initialize the netbsd target descriptions.  */
 #ifdef __x86_64__
   tdesc_amd64_netbsd_no_xml = allocate_target_description ();
+  copy_target_description (tdesc_amd64_netbsd_no_xml,
+                           amd64_netbsd_read_description (X86_XSTATE_SSE_MASK,
+                                                         false));
   tdesc_amd64_netbsd_no_xml->xmltarget = xmltarget_amd64_netbsd_no_xml;
 #endif
 
