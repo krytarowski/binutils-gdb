@@ -404,6 +404,7 @@ case "${target}" in
   x86_64-*-netbsd*)	srv_regobj="$srv_amd64_netbsd_regobj $srv_i386_netbsd_regobj"
 			srv_tgtobj="$srv_netbsd_obj netbsd-x86-low.o x86-low.o x86-dregs.o i387-fp.o"
 			srv_tgtobj="${srv_tgtobj} arch/i386.o arch/amd64.o"
+			srv_tgtobj="${srv_tgtobj} netbsd-x86-tdesc.o"
 			srv_tgtobj="${srv_tgtobj} x86-netbsd.o"
 			srv_tgtobj="${srv_tgtobj} x86-netbsd-dregs.o"
 			;;
