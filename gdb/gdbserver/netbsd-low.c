@@ -463,6 +463,63 @@ netbsd_wait (ptid_t ptid,
   return wptid;
 }
 
+static void
+netbsd_fetch_registers (struct regcache *regcache, int regno)
+{
+#if 0
+  struct lynx_regset_info *regset = lynx_target_regsets;
+  ptid_t inferior_ptid = ptid_of (current_thread);
+
+  while (regset->size >= 0)
+    {
+      struct reg r;
+      int res;
+
+      res = ptrace (PT_GETREGS, inferior_ptid.pid(), &r, inferior_ptid.lwp());
+      if (res < 0)
+        perror ("ptrace");
+
+      regset->store_function (regcache, buf);
+      free (buf);
+      regset++;
+    }
+#endif
+}
+
+/* Implement the store_registers target_ops method.  */
+
+static void
+netbsd_store_registers (struct regcache *regcache, int regno)
+{
+#if 0
+  struct lynx_regset_info *regset = lynx_target_regsets;
+  ptid_t inferior_ptid = ptid_of (current_thread);
+
+  lynx_debug ("lynx_store_registers (regno = %d)", regno);
+
+  while (regset->size >= 0)
+    {
+      char *buf;
+      int res;
+
+      buf = xmalloc (regset->size);
+      res = lynx_ptrace (regset->get_request, inferior_ptid, (int) buf, 0, 0);
+      if (res == 0)
+        {
+          /* Then overlay our cached registers on that.  */
+          regset->fill_function (regcache, buf);
+          /* Only now do we write the register set.  */
+          res = lynx_ptrace (regset->set_request, inferior_ptid, (int) buf,
+                             0, 0);
+        }
+      if (res < 0)
+        perror ("ptrace");
+      free (buf);
+      regset++;
+    }
+#endif
+}
+
 static struct target_ops netbsd_target_ops = {
   netbsd_create_inferior,
   NULL, // netbsd_post_create_inferior,
@@ -474,18 +531,18 @@ static struct target_ops netbsd_target_ops = {
   NULL, //   netbsd_thread_alive,
   netbsd_resume,
   netbsd_wait,
-#if 0
-  netbsd_post_create_inferior,
-  netbsd_attach,
-  netbsd_kill,
-  netbsd_detach,
-  netbsd_mourn,
-  netbsd_join,
-  netbsd_thread_alive,
-  netbsd_resume,
-  netbsd_wait,
+  NULL, //     netbsd_post_create_inferior,
+  NULL, //     netbsd_attach,
+  NULL, //     netbsd_kill,
+  NULL, //     netbsd_detach,
+  NULL, //     netbsd_mourn,
+  NULL, //     netbsd_join,
+  NULL, //     netbsd_thread_alive,
+  NULL, //     netbsd_resume,
+  NULL, //     netbsd_wait,
   netbsd_fetch_registers,
   netbsd_store_registers,
+#if 0
   netbsd_prepare_to_access_memory,
   netbsd_done_accessing_memory,
   netbsd_read_memory,
