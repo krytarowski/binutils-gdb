@@ -238,6 +238,14 @@ pid_to_exec_file (pid_t pid)
   return path;
 }
 
+/* Call the target arch_setup function on the current thread.  */  
+                 
+static void
+netbsd_arch_setup (void)
+{
+  the_low_target.arch_setup ();
+}
+
 static ptid_t
 netbsd_wait (ptid_t ptid,
            struct target_waitstatus *ourstatus, int target_options)
@@ -299,12 +307,30 @@ netbsd_wait (ptid_t ptid,
       ptid_t child_ptid;
       lwpid_t lwp;
 
+      {
+        struct process_info *proc;
+             
+      /* Architecture-specific setup after inferior is running.  */
+      proc = find_process_pid (wpid);
+      if (proc->tdesc == NULL)
+        { 
+          if (proc->attached)
+            {
+              /* This needs to happen after we have attached to the
+                 inferior and it is stopped for the first time, but
+                 before we access any inferior registers.  */                                                                                                
+              netbsd_arch_setup();
+            }
+        }
+      }
+
       ourstatus->kind = TARGET_WAITKIND_STOPPED;
       ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (status));
 
       // Find the lwp that caused the wait status change
       if (ptrace(PT_GET_SIGINFO, wpid, &psi, sizeof(psi)) == -1)
         perror_with_name (("ptrace"));
+
       /* For whole-process signals pick random thread */
       if (psi.psi_lwpid == 0)
         {
