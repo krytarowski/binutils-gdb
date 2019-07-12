@@ -314,13 +314,10 @@ netbsd_wait (ptid_t ptid,
       proc = find_process_pid (wpid);
       if (proc->tdesc == NULL)
         { 
-          if (proc->attached)
-            {
               /* This needs to happen after we have attached to the
                  inferior and it is stopped for the first time, but
                  before we access any inferior registers.  */                                                                                                
               netbsd_arch_setup();
-            }
         }
       }
 
