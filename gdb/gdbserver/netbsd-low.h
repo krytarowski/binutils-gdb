@@ -31,7 +31,6 @@
 
 #define PTRACE_XFER_TYPE long
 
-#ifdef HAVE_NETBSD_REGSETS
 typedef void (*regset_fill_func) (struct regcache *, void *);
 typedef void (*regset_store_func) (struct regcache *, const void *);
 enum regset_type {
@@ -76,8 +75,6 @@ struct regsets_info
      regset in the REGSETS array above at the same offset.  */
   char *disabled_regsets;
 };
-
-#endif
 
 /* Mapping between the general-purpose registers in `struct user'
    format and GDB's register array layout.  */
