@@ -466,24 +466,22 @@ netbsd_wait (ptid_t ptid,
 static void
 netbsd_fetch_registers (struct regcache *regcache, int regno)
 {
-#if 0
-  struct lynx_regset_info *regset = lynx_target_regsets;
+  struct netbsd_regset_info *regset = lynx_target_regsets;
   ptid_t inferior_ptid = ptid_of (current_thread);
 
   while (regset->size >= 0)
     {
-      struct reg r;
+      char *buf;
       int res;
 
-      res = ptrace (PT_GETREGS, inferior_ptid.pid(), &r, inferior_ptid.lwp());
+      buf = xmalloc (regset->size);
+      res = ptrace (regset->get_request, inferior_ptid.pid(), (int) buf, inferior_ptid.lwp());
       if (res < 0)
         perror ("ptrace");
-
       regset->store_function (regcache, buf);
       free (buf);
       regset++;
     }
-#endif
 }
 
 /* Implement the store_registers target_ops method.  */
