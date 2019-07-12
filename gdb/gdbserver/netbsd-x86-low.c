@@ -517,7 +517,7 @@ static int use_xml;
 static const struct target_desc *
 x86_netbsd_read_description (void)
 {
-  __builtin_trap();
+//  __builtin_trap();
   if (!use_xml)
     {
       /* Don't use XML.  */
