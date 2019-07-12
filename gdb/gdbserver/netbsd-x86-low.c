@@ -528,6 +528,15 @@ x86_netbsd_process_qsupported (char **features, int count)
 }
 
 /* Common for x86/x86-64.  */
+   
+static struct regsets_info x86_regsets_info =
+  {
+    x86_regsets, /* regsets */
+    0, /* num_regsets */
+    NULL, /* disabled_regsets */
+  };
+
+/* Common for x86/x86-64.  */
 static void
 x86_get_syscall_trapinfo (struct regcache *regcache, int *sysno)
 {
@@ -2442,5 +2451,9 @@ initialize_low_arch (void)
 #endif
 
   tdesc_i386_netbsd_no_xml = allocate_target_description ();
+  copy_target_description (tdesc_i386_netbsd_no_xml,
+                           i386_netbsd_read_description (X86_XSTATE_SSE_MASK));
   tdesc_i386_netbsd_no_xml->xmltarget = xmltarget_i386_netbsd_no_xml;
+
+  initialize_regsets_info (&x86_regsets_info);
 }

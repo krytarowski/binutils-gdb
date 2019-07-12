@@ -400,9 +400,7 @@ int netbsd_attach_lwp (ptid_t ptid);
 struct lwp_info *find_lwp_pid (ptid_t ptid);
 /* For netbsd_stop_lwp see nat/netbsd-nat.h.  */
 
-#ifdef HAVE_NETBSD_REGSETS
 void initialize_regsets_info (struct regsets_info *regsets_info);
-#endif
 
 void initialize_low_arch (void);
 
