@@ -54,6 +54,7 @@
 #include "common/scoped_restore.h"
 #include <elf.h>
 
+#if 0
 void
 initialize_regsets_info (struct regsets_info *info)
 {
@@ -62,6 +63,7 @@ initialize_regsets_info (struct regsets_info *info)
        info->num_regsets++)
     ;
 }
+#endif
 
 int using_threads = 1;
 
