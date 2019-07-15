@@ -465,8 +465,8 @@ netbsd_fetch_registers (struct regcache *regcache, int regno)
       char *buf;
       int res;
 
-      buf = xmalloc (regset->size);
-      res = ptrace (regset->get_request, inferior_ptid.pid(), (int) buf, inferior_ptid.lwp());
+      buf = (char *)xmalloc (regset->size);
+      res = ptrace (regset->get_request, inferior_ptid.pid(), buf, inferior_ptid.lwp());
       if (res < 0)
         perror ("ptrace");
       regset->store_function (regcache, buf);
