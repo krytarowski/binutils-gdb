@@ -298,7 +298,7 @@ x86_store_gregset (struct regcache *regcache, const void *buf)
 
 static struct regset_info x86_regsets[] =
 {
-  { PT_GETREGS, PT_SETREGS, 0, sizeof (struct reg), GENERAL_REGS, x86_fill_gregset, x86_store_gregset },
+  { PT_GETREGS, PT_SETREGS, sizeof (struct reg), x86_fill_gregset, x86_store_gregset },
   NULL_REGSET
 };
 

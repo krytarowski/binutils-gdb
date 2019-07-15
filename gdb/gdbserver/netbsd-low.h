@@ -43,16 +43,12 @@ enum regset_type {
 /* The arch's regsets array initializer must be terminated with a NULL
    regset.  */
 #define NULL_REGSET \
-  { 0, 0, 0, -1, (enum regset_type) -1, NULL, NULL }
+  { 0, 0, -1, NULL, NULL }
 
-struct regset_info
+struct netbsd_regset_info
 {
   int get_request, set_request;
-  /* If NT_TYPE isn't 0, it will be passed to ptrace as the 3rd
-     argument and the 4th argument should be "const struct iovec *".  */
-  int nt_type;
   int size;
-  enum regset_type type;
   regset_fill_func fill_function;
   regset_store_func store_function;
 };

@@ -466,7 +466,7 @@ netbsd_wait (ptid_t ptid,
 static void
 netbsd_fetch_registers (struct regcache *regcache, int regno)
 {
-  struct netbsd_regset_info *regset = lynx_target_regsets;
+  struct netbsd_regset_info *regset = netbsd_target_regsets;
   ptid_t inferior_ptid = ptid_of (current_thread);
 
   while (regset->size >= 0)
