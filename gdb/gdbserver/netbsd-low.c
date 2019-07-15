@@ -54,17 +54,6 @@
 #include "common/scoped_restore.h"
 #include <elf.h>
 
-#if 0
-void
-initialize_regsets_info (struct regsets_info *info)
-{
-  for (info->num_regsets = 0;
-       info->regsets[info->num_regsets].size >= 0;
-       info->num_regsets++)
-    ;
-}
-#endif
-
 int using_threads = 1;
 
 //const struct target_desc *netbsd_tdesc;

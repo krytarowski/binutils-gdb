@@ -296,8 +296,7 @@ x86_store_gregset (struct regcache *regcache, const void *buf)
     supply_register (regcache, i, ((char *) buf) + i386_regmap[i]);
 }
 
-static struct netbsd_regset_info x86_regsets[] =
-{
+struct netbsd_regset_info netbsd_target_regsets[] = {
   { PT_GETREGS, PT_SETREGS, sizeof (struct reg), x86_fill_gregset, x86_store_gregset },
   NULL_REGSET
 };

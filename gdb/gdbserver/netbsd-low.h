@@ -118,6 +118,8 @@ struct process_info_private
   CORE_ADDR r_debug;
 };
 
+extern struct netbsd_regset_info netbsd_target_regsets[];
+
 struct lwp_info;
 
 struct netbsd_target_ops
