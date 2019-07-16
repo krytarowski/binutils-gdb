@@ -16,11 +16,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "server.h"
-#include "lynx-low.h"
+#include "netbsd-low.h"
 #include <limits.h>
 #include <sys/ptrace.h>
 #include "gdbsupport/x86-xstate.h"
-#include "arch/i386.h"
+#include "arch/amd64.h"
 #include "x86-tdesc.h"
 
 /* The following two typedefs are defined in a .h file which is not
@@ -121,7 +121,7 @@ typedef struct usr_fcontext {
 
 /* The index of various registers inside the regcache.  */
 
-enum lynx_i386_gdb_regnum
+enum netbsd_x86_64_gdb_regnum
 {
   I386_EAX_REGNUM,
   I386_ECX_REGNUM,
@@ -156,55 +156,55 @@ enum lynx_i386_gdb_regnum
 /* The fill_function for the general-purpose register set.  */
 
 static void
-lynx_i386_fill_gregset (struct regcache *regcache, char *buf)
+netbsd_x86_64_fill_gregset (struct regcache *regcache, char *buf)
 {
-#define lynx_i386_collect_gp(regnum, fld) \
+#define netbsd_x86_64_collect_gp(regnum, fld) \
   collect_register (regcache, regnum, \
                     buf + offsetof (usr_econtext_t, uec_##fld))
 
-  lynx_i386_collect_gp (I386_EAX_REGNUM, eax);
-  lynx_i386_collect_gp (I386_ECX_REGNUM, ecx);
-  lynx_i386_collect_gp (I386_EDX_REGNUM, edx);
-  lynx_i386_collect_gp (I386_EBX_REGNUM, ebx);
-  lynx_i386_collect_gp (I386_ESP_REGNUM, esp);
-  lynx_i386_collect_gp (I386_EBP_REGNUM, ebp);
-  lynx_i386_collect_gp (I386_ESI_REGNUM, esi);
-  lynx_i386_collect_gp (I386_EDI_REGNUM, edi);
-  lynx_i386_collect_gp (I386_EIP_REGNUM, eip);
-  lynx_i386_collect_gp (I386_EFLAGS_REGNUM, eflags);
-  lynx_i386_collect_gp (I386_CS_REGNUM, cs);
-  lynx_i386_collect_gp (I386_SS_REGNUM, ss);
-  lynx_i386_collect_gp (I386_DS_REGNUM, ds);
-  lynx_i386_collect_gp (I386_ES_REGNUM, es);
-  lynx_i386_collect_gp (I386_FS_REGNUM, fs);
-  lynx_i386_collect_gp (I386_GS_REGNUM, gs);
+  netbsd_x86_64_collect_gp (I386_EAX_REGNUM, eax);
+  netbsd_x86_64_collect_gp (I386_ECX_REGNUM, ecx);
+  netbsd_x86_64_collect_gp (I386_EDX_REGNUM, edx);
+  netbsd_x86_64_collect_gp (I386_EBX_REGNUM, ebx);
+  netbsd_x86_64_collect_gp (I386_ESP_REGNUM, esp);
+  netbsd_x86_64_collect_gp (I386_EBP_REGNUM, ebp);
+  netbsd_x86_64_collect_gp (I386_ESI_REGNUM, esi);
+  netbsd_x86_64_collect_gp (I386_EDI_REGNUM, edi);
+  netbsd_x86_64_collect_gp (I386_EIP_REGNUM, eip);
+  netbsd_x86_64_collect_gp (I386_EFLAGS_REGNUM, eflags);
+  netbsd_x86_64_collect_gp (I386_CS_REGNUM, cs);
+  netbsd_x86_64_collect_gp (I386_SS_REGNUM, ss);
+  netbsd_x86_64_collect_gp (I386_DS_REGNUM, ds);
+  netbsd_x86_64_collect_gp (I386_ES_REGNUM, es);
+  netbsd_x86_64_collect_gp (I386_FS_REGNUM, fs);
+  netbsd_x86_64_collect_gp (I386_GS_REGNUM, gs);
 }
 
 /* The store_function for the general-purpose register set.  */
 
 static void
-lynx_i386_store_gregset (struct regcache *regcache, const char *buf)
+netbsd_x86_64_store_gregset (struct regcache *regcache, const char *buf)
 {
-#define lynx_i386_supply_gp(regnum, fld) \
+#define netbsd_x86_64_supply_gp(regnum, fld) \
   supply_register (regcache, regnum, \
                    buf + offsetof (usr_econtext_t, uec_##fld))
 
-  lynx_i386_supply_gp (I386_EAX_REGNUM, eax);
-  lynx_i386_supply_gp (I386_ECX_REGNUM, ecx);
-  lynx_i386_supply_gp (I386_EDX_REGNUM, edx);
-  lynx_i386_supply_gp (I386_EBX_REGNUM, ebx);
-  lynx_i386_supply_gp (I386_ESP_REGNUM, esp);
-  lynx_i386_supply_gp (I386_EBP_REGNUM, ebp);
-  lynx_i386_supply_gp (I386_ESI_REGNUM, esi);
-  lynx_i386_supply_gp (I386_EDI_REGNUM, edi);
-  lynx_i386_supply_gp (I386_EIP_REGNUM, eip);
-  lynx_i386_supply_gp (I386_EFLAGS_REGNUM, eflags);
-  lynx_i386_supply_gp (I386_CS_REGNUM, cs);
-  lynx_i386_supply_gp (I386_SS_REGNUM, ss);
-  lynx_i386_supply_gp (I386_DS_REGNUM, ds);
-  lynx_i386_supply_gp (I386_ES_REGNUM, es);
-  lynx_i386_supply_gp (I386_FS_REGNUM, fs);
-  lynx_i386_supply_gp (I386_GS_REGNUM, gs);
+  netbsd_x86_64_supply_gp (I386_EAX_REGNUM, eax);
+  netbsd_x86_64_supply_gp (I386_ECX_REGNUM, ecx);
+  netbsd_x86_64_supply_gp (I386_EDX_REGNUM, edx);
+  netbsd_x86_64_supply_gp (I386_EBX_REGNUM, ebx);
+  netbsd_x86_64_supply_gp (I386_ESP_REGNUM, esp);
+  netbsd_x86_64_supply_gp (I386_EBP_REGNUM, ebp);
+  netbsd_x86_64_supply_gp (I386_ESI_REGNUM, esi);
+  netbsd_x86_64_supply_gp (I386_EDI_REGNUM, edi);
+  netbsd_x86_64_supply_gp (I386_EIP_REGNUM, eip);
+  netbsd_x86_64_supply_gp (I386_EFLAGS_REGNUM, eflags);
+  netbsd_x86_64_supply_gp (I386_CS_REGNUM, cs);
+  netbsd_x86_64_supply_gp (I386_SS_REGNUM, ss);
+  netbsd_x86_64_supply_gp (I386_DS_REGNUM, ds);
+  netbsd_x86_64_supply_gp (I386_ES_REGNUM, es);
+  netbsd_x86_64_supply_gp (I386_FS_REGNUM, fs);
+  netbsd_x86_64_supply_gp (I386_GS_REGNUM, gs);
 }
 
 /* Extract the first 16 bits of register REGNUM in the REGCACHE,
@@ -226,7 +226,7 @@ collect_16bit_register (struct regcache *regcache, int regnum, char *dest)
 /* The fill_function for the floating-point register set.  */
 
 static void
-lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
+netbsd_x86_64_fill_fpregset (struct regcache *regcache, char *buf)
 {
   int i;
 
@@ -237,7 +237,7 @@ lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
 		      + i * sizeof (struct ufp387_real));
 
   /* Collect the other FPU registers.  */
-  collect_16bit_register (regcache, I386_FCTRL_REGNUM,
+  collect_16bit_register (regcache, x86_64_FCTRL_REGNUM,
                           buf + offsetof (usr_fcontext_t, ufc_control));
   collect_16bit_register (regcache, I386_FSTAT_REGNUM,
                           buf + offsetof (usr_fcontext_t, ufc_status));
@@ -251,7 +251,7 @@ lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
                     buf + offsetof (usr_fcontext_t, ufc_data_sel));
   collect_register (regcache, I386_FOOFF_REGNUM,
                     buf + offsetof (usr_fcontext_t, ufc_data_off));
-#if !defined(LYNXOS_178)
+#if !defined(netbsdOS_178)
   collect_16bit_register (regcache, I386_FOP_REGNUM,
                           buf + offsetof (usr_fcontext_t, ufc_opcode));
 
@@ -286,7 +286,7 @@ supply_16bit_register (struct regcache *regcache, int regnum, const char *buf)
 /* The store_function for the floating-point register set.  */
 
 static void
-lynx_i386_store_fpregset (struct regcache *regcache, const char *buf)
+netbsd_x86_64_store_fpregset (struct regcache *regcache, const char *buf)
 {
   int i;
 
@@ -325,34 +325,34 @@ lynx_i386_store_fpregset (struct regcache *regcache, const char *buf)
 #endif
 }
 
-/* Implements the lynx_target_ops.arch_setup routine.  */
+/* Implements the netbsd_target_ops.arch_setup routine.  */
 
 static void
-lynx_i386_arch_setup (void)
+netbsd_x86_64_arch_setup (void)
 {
   struct target_desc *tdesc
-    = i386_create_target_description (X86_XSTATE_SSE_MASK, false, false);
+    = x86_64_create_target_description (X86_XSTATE_SSE_MASK, false, false);
 
-  init_target_desc (tdesc, i386_expedite_regs);
+  init_target_desc (tdesc, x86_64_expedite_regs);
 
-  lynx_tdesc = tdesc;
+  netbsd_tdesc = tdesc;
 }
 
-/* Description of all the x86-lynx register sets.  */
+/* Description of all the x86-netbsd register sets.  */
 
-struct lynx_regset_info lynx_target_regsets[] = {
+struct netbsd_regset_info netbsd_target_regsets[] = {
   /* General Purpose Registers.  */
   {PTRACE_GETREGS, PTRACE_SETREGS, sizeof(usr_econtext_t),
-   lynx_i386_fill_gregset, lynx_i386_store_gregset},
+   netbsd_x86_64_fill_gregset, netbsd_x86_64_store_gregset},
   /* Floating Point Registers.  */
   { PTRACE_GETFPREGS, PTRACE_SETFPREGS, sizeof(usr_fcontext_t),
-    lynx_i386_fill_fpregset, lynx_i386_store_fpregset },
+    netbsd_x86_64_fill_fpregset, netbsd_x86_64_store_fpregset },
   /* End of list marker.  */
   {0, 0, -1, NULL, NULL }
 };
 
-/* The lynx_target_ops vector for x86-lynx.  */
+/* The netbsd_target_ops vector for x86-netbsd.  */
 
-struct lynx_target_ops the_low_target = {
-  lynx_i386_arch_setup,
+struct netbsd_target_ops the_low_target = {
+  netbsd_x86_64_arch_setup,
 };
