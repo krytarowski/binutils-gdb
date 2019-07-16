@@ -66,7 +66,7 @@ netbsd_debug (const char *string, ...)
 /* Build a ptid_t given a PID and a NetBSD TID.  */
 
 static ptid_t
-netbsd_ptid_t (int pid, long tid)
+netbsd_ptid_t (pid_t pid, lwpid_t tid)
 {
   /* brobecker/2010-06-21: It looks like the LWP field in ptids
      should be distinct for each thread (see write_ptid where it
@@ -488,7 +488,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
               /* This needs to happen after we have attached to the
                  inferior and it is stopped for the first time, but
                  before we access any inferior registers.  */
-              netbsd_arch_setup();
+              the_low_target.arch_setup ();
         }
       }
 
@@ -510,7 +510,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
           lwp = psi.psi_lwpid;
         }
 
-      wptid = ptid_t (wpid, lwp, 0);
+      ptid_t wptid = netbsd_ptid_t (wpid, lwp);
 
       if (!find_thread_ptid (wptid))
         {
@@ -593,7 +593,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                       return wptid;
                     }
 
-                  child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
+                  child_ptid = netbsd_ptid_t (child, child_psi.psi_lwpid);
                   netbsd_enable_event_reporting (child_ptid.pid ());
                   ourstatus->value.related_pid = child_ptid;
                   break;
@@ -601,7 +601,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                   ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
                   break;
                 case PTRACE_LWP_CREATE:
-                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
+                  wptid = netbsd_ptid_t (wpid, pst.pe_lwp);
                   if (!find_thread_ptid (wptid))
                     {
                       add_thread (wptid, NULL);
@@ -609,7 +609,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                   ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
                   break;
                 case PTRACE_LWP_EXIT:
-                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
+                  wptid = netbsd_ptid_t (wpid, pst.pe_lwp);
                   thread_info *thread = find_thread_ptid (wptid);
                   if (!thread)
                     {
