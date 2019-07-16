@@ -712,7 +712,6 @@ static int
 netbsd_detach (process_info *process)
 {
   pid_t pid = process->pid;
-  ptid_t ptid = netbsd_ptid_t (pid, 0);
 
   netbsd_ptrace (PT_DETACH, pid, (void *)1, 0);
   the_target->mourn (process);
@@ -811,34 +810,33 @@ netbsd_store_registers (struct regcache *regcache, int regno)
 /* Implement the read_memory target_ops method.  */
 
 static int
-netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
+netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 {
-  /* On netbsdOS, memory reads needs to be performed in chunks the size
-     of int types, and they should also be aligned accordingly.  */
-  int buf;
-  const int xfer_size = sizeof (buf);
-  CORE_ADDR addr = memaddr & -(CORE_ADDR) xfer_size;
+  struct ptrace_io_desc io;
+  io.piod_op = PIOD_READ_D;
+  io.piod_len = size;
+
   ptid_t inferior_ptid = ptid_of (current_thread);
 
-  while (addr < memaddr + len)
+  int bytes_read = 0;
+
+  do
     {
-      int skip = 0;
-      int truncate = 0;
+      io.piod_offs = (void *)(memaddr + bytes_read);
+      io.piod_addr = myaddr + bytes_read;
 
-      errno = 0;
-      if (addr < memaddr)
-        skip = memaddr - addr;
-      if (addr + xfer_size > memaddr + len)
-        truncate = addr + xfer_size - memaddr - len;
-      buf = netbsd_ptrace (PTRACE_PEEKTEXT, inferior_ptid, addr, 0, 0);
-      if (errno)
-        return errno;
-      memcpy (myaddr + (addr - memaddr) + skip, (gdb_byte *) &buf + skip,
-              xfer_size - skip - truncate);
-      addr += xfer_size;
+      int rv = netbsd_ptrace (PT_IO, inferior_ptid.pid(), &io, 0);
+      if (rv == -1)
+        return TARGET_XFER_E_IO;
+      if (io.piod_len == 0)
+        return TARGET_XFER_EOF;
+
+      bytes_read += io.piod_len;
+      io.piod_len = size - bytes_read;
     }
+  while (bytes_read < size);
 
-  return 0;
+  return TARGET_XFER_OK;
 }
 
 /* Implement the write_memory target_ops method.  */
