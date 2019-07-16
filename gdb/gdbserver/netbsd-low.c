@@ -192,10 +192,9 @@ ptrace_request_to_str (int request)
    ptrace calls if debug traces are activated.  */
 
 static int
-netbsd_ptrace (int request, ptid_t ptid, void *addr, int data)
+netbsd_ptrace (int request, pid_t pid, void *addr, int data)
 {
   int result;
-  const int pid = netbsd_ptrace_pid_from_ptid (ptid);
   int saved_errno;
 
   if (debug_threads)
@@ -238,7 +237,7 @@ netbsd_ptrace_fun ()
   if (setpgid (0, 0) < 0)
     trace_start_error_with_name ("setpgid");
 
-  if (netbsd_ptrace (PT_TRACE_ME, null_ptid, NULL, 0) < 0)
+  if (netbsd_ptrace (PT_TRACE_ME, 0, NULL, 0) < 0)
     trace_start_error_with_name ("netbsd_ptrace");
 
   /* If GDBserver is connected to gdb via stdio, redirect the inferior's
@@ -289,7 +288,7 @@ netbsd_create_inferior (const char *program,
    add all threads running in that process.  */
 
 static void
-netbsd_add_threads_after_attach (int pid)
+netbsd_add_threads_after_attach (pid_t pid)
 {
   struct ptrace_lwpinfo pl;
   int val;
@@ -313,9 +312,8 @@ netbsd_add_threads_after_attach (int pid)
 static int
 netbsd_attach (unsigned long pid)
 {
-  ptid_t ptid = netbsd_ptid_t (pid, 0);
 
-  if (netbsd_ptrace (PTRACE_ATTACH, ptid, 0, 0, 0) != 0)
+  if (netbsd_ptrace (PT_ATTACH, pid, NULL, 0) != 0)
     error ("Cannot attach to process %lu: %s (%d)\n", pid,
 	   strerror (errno), errno);
 
