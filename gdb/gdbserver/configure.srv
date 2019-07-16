@@ -383,10 +383,10 @@ case "${target}" in
 			ipa_obj="${ipa_obj} arch/amd64-ipa.o"
 			;;
   x86_64-*-netbsd*)	srv_regobj=""
-			srv_tgtobj="lynx-low.o lynx-i386-low.o fork-child.o fork-inferior.o"
-			srv_tgtobj="${srv_tgtobj} arch/i386.o"
+			srv_tgtobj="netbsd-low.o netbsd-x86_64-low.o fork-child.o fork-inferior.o"
+			srv_tgtobj="${srv_tgtobj} arch/amd64.o"
 			srv_netbsd=yes
-
+			;;
   x86_64-*-mingw*)	srv_regobj=""
 			srv_tgtobj="x86-low.o x86-dregs.o i387-fp.o win32-low.o win32-i386-low.o"
 			srv_tgtobj="${srv_tgtobj} arch/amd64.o"
