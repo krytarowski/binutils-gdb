@@ -427,9 +427,7 @@ static ptid_t
 netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int target_options)
 {
   pid_t pid;
-  int ret;
-  int wstat;
-  ptid_t new_ptid;
+  int status;
 
   if (ptid == minus_one_ptid)
     pid = netbsd_ptid_get_pid (ptid_of (current_thread));
@@ -440,79 +438,200 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int target_options
   if (target_options & TARGET_WNOHANG)
     options |= WNOHANG;
 
-retry:
+  pid_t wpid = netbsd_waitpid (pid, &status, options);
 
-  ret = netbsd_waitpid (pid, &wstat, options);
-  new_ptid = netbsd_ptid_t (ret, ((union wait *) &wstat)->w_tid);
-  find_process_pid (ret)->priv->last_wait_event_ptid = new_ptid;
-
-  /* If this is a new thread, then add it now.  The reason why we do
-     this here instead of when handling new-thread events is because
-     we need to add the thread associated to the "main" thread - even
-     for non-threaded applications where the new-thread events are not
-     generated.  */
-  if (!find_thread_ptid (new_ptid))
+  if (wpid == 0)
     {
-      netbsd_debug ("New thread: (pid = %d, tid = %d)",
-		  netbsd_ptid_get_pid (new_ptid), netbsd_ptid_get_tid (new_ptid));
-      add_thread (new_ptid, NULL);
+      gdb_assert (target_options & TARGET_WNOHANG);
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return null_ptid;
     }
 
-  if (WIFSTOPPED (wstat))
+  gdb_assert (wpid != -1);
+
+  if (WIFEXITED (status))
     {
-      status->kind = TARGET_WAITKIND_STOPPED;
-      status->value.integer = gdb_signal_from_host (WSTOPSIG (wstat));
-      netbsd_debug ("process stopped with signal: %d",
-                  status->value.integer);
-    }
-  else if (WIFEXITED (wstat))
-    {
-      status->kind = TARGET_WAITKIND_EXITED;
-      status->value.integer = WEXITSTATUS (wstat);
-      netbsd_debug ("process exited with code: %d", status->value.integer);
-    }
-  else if (WIFSIGNALED (wstat))
-    {
-      status->kind = TARGET_WAITKIND_SIGNALLED;
-      status->value.integer = gdb_signal_from_host (WTERMSIG (wstat));
-      netbsd_debug ("process terminated with code: %d",
-                  status->value.integer);
-    }
-  else
-    {
-      /* Not sure what happened if we get here, or whether we can
-	 in fact get here.  But if we do, handle the event the best
-	 we can.  */
-      status->kind = TARGET_WAITKIND_STOPPED;
-      status->value.integer = gdb_signal_from_host (0);
-      netbsd_debug ("unknown event ????");
+      ourstatus->kind = TARGET_WAITKIND_EXITED;
+      ourstatus->value.integer = WEXITSTATUS (status);
+      return ptid;
     }
 
-  /* SIGTRAP events are generated for situations other than single-step/
-     breakpoint events (Eg. new-thread events).  Handle those other types
-     of events, and resume the execution if necessary.  */
-  if (status->kind == TARGET_WAITKIND_STOPPED
-      && status->value.integer == GDB_SIGNAL_TRAP)
+  if (WIFSIGNALED (status))
     {
-      const int realsig = netbsd_ptrace (PTRACE_GETTRACESIG, new_ptid, 0, 0, 0);
-
-      netbsd_debug ("(realsig = %d)", realsig);
-      switch (realsig)
-	{
-	  case SIGNEWTHREAD:
-	    /* We just added the new thread above.  No need to do anything
-	       further.  Just resume the execution again.  */
-	    netbsd_continue (new_ptid);
-	    goto retry;
-
-	  case SIGTHREADEXIT:
-	    remove_thread (find_thread_ptid (new_ptid));
-	    netbsd_continue (new_ptid);
-	    goto retry;
-	}
+      ourstatus->kind = TARGET_WAITKIND_SIGNALLED;
+      ourstatus->value.sig = gdb_signal_from_host (WTERMSIG (status));
+      return ptid;
     }
 
-  return new_ptid;
+  if (WIFCONTINUED(status))
+    {
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return null_ptid;
+    }
+
+
+  if (WIFSTOPPED (status))
+    {
+      ptrace_state_t pst;
+      ptrace_siginfo_t psi, child_psi;
+      pid_t child, wchild;
+      ptid_t child_ptid;
+      lwpid_t lwp;
+
+      {
+        struct process_info *proc;
+
+      /* Architecture-specific setup after inferior is running.  */
+      proc = find_process_pid (wpid);
+      if (proc->tdesc == NULL)
+        {
+              /* This needs to happen after we have attached to the
+                 inferior and it is stopped for the first time, but
+                 before we access any inferior registers.  */
+              netbsd_arch_setup();
+        }
+      }
+
+      ourstatus->kind = TARGET_WAITKIND_STOPPED;
+      ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (status));
+
+      // Find the lwp that caused the wait status change
+      if (ptrace(PT_GET_SIGINFO, wpid, &psi, sizeof(psi)) == -1)
+        perror_with_name (("ptrace"));
+
+      /* For whole-process signals pick random thread */
+      if (psi.psi_lwpid == 0)
+        {
+          // XXX: Is this always valid?
+          lwp = lwpid_of (current_thread);
+        }
+      else
+        {
+          lwp = psi.psi_lwpid;
+        }
+
+      wptid = ptid_t (wpid, lwp, 0);
+
+      if (!find_thread_ptid (wptid))
+        {
+          add_thread (wptid, NULL);
+        }
+
+      switch (psi.psi_siginfo.si_signo)
+        {
+        case SIGTRAP:
+          switch (psi.psi_siginfo.si_code)
+            {
+#if 0
+            case TRAP_BRKPT:
+//            lp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
+              break;
+            case TRAP_DBREG:
+//            if (hardware_breakpoint_inserted_here_p (get_regcache_aspace (regcache), pc))
+//              lp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
+//            else
+//              lp->stop_reason = TARGET_STOPPED_BY_WATCHPOINT;
+              break;
+            case TRAP_TRACE:
+//            lp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
+              break;
+#endif
+            case TRAP_SCE:
+              ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
+              ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
+              break;
+            case TRAP_SCX:
+              ourstatus->kind = TARGET_WAITKIND_SYSCALL_RETURN;
+              ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
+              break;
+            case TRAP_EXEC:
+              ourstatus->kind = TARGET_WAITKIND_EXECD;
+              ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (wpid));
+              break;
+            case TRAP_LWP:
+            case TRAP_CHLD:
+              if (ptrace(PT_GET_PROCESS_STATE, wpid, &pst, sizeof(pst)) == -1)
+                perror_with_name (("ptrace"));
+              switch (pst.pe_report_event)
+                {
+                case PTRACE_FORK:
+                case PTRACE_VFORK:
+                  if (pst.pe_report_event == PTRACE_FORK)
+                    ourstatus->kind = TARGET_WAITKIND_FORKED;
+                  else
+                    ourstatus->kind = TARGET_WAITKIND_VFORKED;
+                  child = pst.pe_other_pid;
+
+                  wchild = waitpid (child, &status, 0);
+
+                  if (wchild == -1)
+                    perror_with_name (("waitpid"));
+
+                  gdb_assert (wchild == child);
+
+                  if (!WIFSTOPPED(status))
+                    {
+                      /* Abnormal situation (SIGKILLed?).. bail out */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
+
+                  if (ptrace(PT_GET_SIGINFO, child, &child_psi, sizeof(child_psi)) == -1)
+                    perror_with_name (("ptrace"));
+
+                  if (child_psi.psi_siginfo.si_signo != SIGTRAP)
+                    {
+                      /* Abnormal situation.. bail out */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
+
+                  if (child_psi.psi_siginfo.si_code != TRAP_CHLD)
+                    {
+                      /* Abnormal situation.. bail out */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
+
+                  child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
+                  netbsd_enable_event_reporting (child_ptid.pid ());
+                  ourstatus->value.related_pid = child_ptid;
+                  break;
+                case PTRACE_VFORK_DONE:
+                  ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
+                  break;
+                case PTRACE_LWP_CREATE:
+                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
+                  if (!find_thread_ptid (wptid))
+                    {
+                      add_thread (wptid, NULL);
+                    }
+                  ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
+                  break;
+                case PTRACE_LWP_EXIT:
+                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
+                  thread_info *thread = find_thread_ptid (wptid);
+                  if (!thread)
+                    {
+                      /* Dead child reported after attach? */
+                      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
+                      return wptid;
+                    }
+                  remove_thread (thread);
+                  ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
+
+#if 0
+                  if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
+                    perror_with_name (("ptrace"));
+#endif
+                  break;
+                }
+              break;
+            }
+          break;
+        }
+    }
+  return wptid;
 }
 
 /* A wrapper around netbsd_wait_1 that also prints debug traces when
