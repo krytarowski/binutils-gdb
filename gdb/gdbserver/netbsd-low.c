@@ -324,6 +324,22 @@ netbsd_attach (unsigned long pid)
   return 0;
 }
 
+#if 0
+/* Resume the execution of the given PTID.  */
+
+static void
+netbsd_continue (ptid_t ptid)
+{
+  struct thread_resume resume_info;
+
+  resume_info.thread = ptid;
+  resume_info.kind = resume_continue;
+  resume_info.sig = 0;
+
+  netbsd_resume (&resume_info, 1);
+}
+#endif
+
 /* Implement the resume target_ops method.  */
 
 static void
@@ -389,20 +405,6 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
   netbsd_ptrace (PT_CONTINUE, ptid.pid(), (void *)1, signal);
   if (errno)
     perror_with_name ("ptrace");
-}
-
-/* Resume the execution of the given PTID.  */
-
-static void
-netbsd_continue (ptid_t ptid)
-{
-  struct thread_resume resume_info;
-
-  resume_info.thread = ptid;
-  resume_info.kind = resume_continue;
-  resume_info.sig = 0;
-
-  netbsd_resume (&resume_info, 1);
 }
 
 /* A wrapper around waitpid that handles the various idiosyncrasies
