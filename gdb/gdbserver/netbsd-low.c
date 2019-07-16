@@ -240,6 +240,24 @@ netbsd_ptrace_fun ()
 
   if (netbsd_ptrace (PT_TRACE_ME, null_ptid, NULL, 0) < 0)
     trace_start_error_with_name ("netbsd_ptrace");
+
+  /* If GDBserver is connected to gdb via stdio, redirect the inferior's
+     stdout to stderr so that inferior i/o doesn't corrupt the connection.
+     Also, redirect stdin to /dev/null.  */
+  if (remote_connection_is_stdio ())
+    {
+      if (close (0) < 0)
+        trace_start_error_with_name ("close");
+      if (open ("/dev/null", O_RDONLY) < 0)
+        trace_start_error_with_name ("open");
+      if (dup2 (2, 1) < 0)
+        trace_start_error_with_name ("dup2");
+      if (write (2, "stdin/stdout redirected\n",
+                 sizeof ("stdin/stdout redirected\n") - 1) < 0)
+        {
+          /* Errors ignored.  */;
+        }
+    }
 }
 
 /* Implement the create_inferior method of the target_ops vector.  */
