@@ -63,26 +63,37 @@ enum netbsd_x86_64_gdb_regnum
 static void
 netbsd_x86_64_fill_gregset (struct regcache *regcache, char *buf)
 {
-#define netbsd_x86_64_collect_gp(regnum, fld) \
-  collect_register (regcache, regnum, \
-                    buf + offsetof (usr_econtext_t, uec_##fld))
+  struct reg *r;
 
-  netbsd_x86_64_collect_gp (I386_EAX_REGNUM, eax);
-  netbsd_x86_64_collect_gp (I386_ECX_REGNUM, ecx);
-  netbsd_x86_64_collect_gp (I386_EDX_REGNUM, edx);
-  netbsd_x86_64_collect_gp (I386_EBX_REGNUM, ebx);
-  netbsd_x86_64_collect_gp (I386_ESP_REGNUM, esp);
-  netbsd_x86_64_collect_gp (I386_EBP_REGNUM, ebp);
-  netbsd_x86_64_collect_gp (I386_ESI_REGNUM, esi);
-  netbsd_x86_64_collect_gp (I386_EDI_REGNUM, edi);
-  netbsd_x86_64_collect_gp (I386_EIP_REGNUM, eip);
-  netbsd_x86_64_collect_gp (I386_EFLAGS_REGNUM, eflags);
-  netbsd_x86_64_collect_gp (I386_CS_REGNUM, cs);
-  netbsd_x86_64_collect_gp (I386_SS_REGNUM, ss);
-  netbsd_x86_64_collect_gp (I386_DS_REGNUM, ds);
-  netbsd_x86_64_collect_gp (I386_ES_REGNUM, es);
-  netbsd_x86_64_collect_gp (I386_FS_REGNUM, fs);
-  netbsd_x86_64_collect_gp (I386_GS_REGNUM, gs);
+  r = (struct reg *)buf;
+
+#define netbsd_x86_64_collect_gp(regnum, fld) \
+  collect_register (regcache, regnum, r->regs[_REG_##fld])
+
+  netbsd_x86_64_collect_gp (AMD64_RAX_REGNUM, RAX);
+  netbsd_x86_64_collect_gp (AMD64_RBX_REGNUM, RBX);
+  netbsd_x86_64_collect_gp (AMD64_RCX_REGNUM, RCX);
+  netbsd_x86_64_collect_gp (AMD64_RDX_REGNUM, RDX);
+  netbsd_x86_64_collect_gp (AMD64_RSI_REGNUM, RSI);
+  netbsd_x86_64_collect_gp (AMD64_RDI_REGNUM, RDI);
+  netbsd_x86_64_collect_gp (AMD64_RBP_REGNUM, RBP);
+  netbsd_x86_64_collect_gp (AMD64_RSP_REGNUM, RSP);
+  netbsd_x86_64_collect_gp (AMD64_R8_REGNUM, R8);
+  netbsd_x86_64_collect_gp (AMD64_R9_REGNUM, R9);
+  netbsd_x86_64_collect_gp (AMD64_R10_REGNUM, R10);
+  netbsd_x86_64_collect_gp (AMD64_R11_REGNUM, R11);
+  netbsd_x86_64_collect_gp (AMD64_R12_REGNUM, R12);
+  netbsd_x86_64_collect_gp (AMD64_R13_REGNUM, R13);
+  netbsd_x86_64_collect_gp (AMD64_R14_REGNUM, R14);
+  netbsd_x86_64_collect_gp (AMD64_R15_REGNUM, R15);
+  netbsd_x86_64_collect_gp (AMD64_RIP_REGNUM, RIP);
+  netbsd_x86_64_collect_gp (AMD64_EFLAGS_REGNUM, RFLAGS);
+  netbsd_x86_64_collect_gp (AMD64_CS_REGNUM, CS);
+  netbsd_x86_64_collect_gp (AMD64_SS_REGNUM, SS);
+  netbsd_x86_64_collect_gp (AMD64_DS_REGNUM, DS);
+  netbsd_x86_64_collect_gp (AMD64_ES_REGNUM, ES);
+  netbsd_x86_64_collect_gp (AMD64_FS_REGNUM, FS);
+  netbsd_x86_64_collect_gp (AMD64_GS_REGNUM, GS);
 }
 
 /* The store_function for the general-purpose register set.  */
@@ -90,26 +101,37 @@ netbsd_x86_64_fill_gregset (struct regcache *regcache, char *buf)
 static void
 netbsd_x86_64_store_gregset (struct regcache *regcache, const char *buf)
 {
-#define netbsd_x86_64_supply_gp(regnum, fld) \
-  supply_register (regcache, regnum, \
-                   buf + offsetof (usr_econtext_t, uec_##fld))
+  struct reg *r;
 
-  netbsd_x86_64_supply_gp (I386_EAX_REGNUM, eax);
-  netbsd_x86_64_supply_gp (I386_ECX_REGNUM, ecx);
-  netbsd_x86_64_supply_gp (I386_EDX_REGNUM, edx);
-  netbsd_x86_64_supply_gp (I386_EBX_REGNUM, ebx);
-  netbsd_x86_64_supply_gp (I386_ESP_REGNUM, esp);
-  netbsd_x86_64_supply_gp (I386_EBP_REGNUM, ebp);
-  netbsd_x86_64_supply_gp (I386_ESI_REGNUM, esi);
-  netbsd_x86_64_supply_gp (I386_EDI_REGNUM, edi);
-  netbsd_x86_64_supply_gp (I386_EIP_REGNUM, eip);
-  netbsd_x86_64_supply_gp (I386_EFLAGS_REGNUM, eflags);
-  netbsd_x86_64_supply_gp (I386_CS_REGNUM, cs);
-  netbsd_x86_64_supply_gp (I386_SS_REGNUM, ss);
-  netbsd_x86_64_supply_gp (I386_DS_REGNUM, ds);
-  netbsd_x86_64_supply_gp (I386_ES_REGNUM, es);
-  netbsd_x86_64_supply_gp (I386_FS_REGNUM, fs);
-  netbsd_x86_64_supply_gp (I386_GS_REGNUM, gs);
+  r = (struct reg *)buf;
+
+#define netbsd_x86_64_supply_gp(regnum, fld) \
+  supply_register (regcache, regnum, r->regs[_REG_##fld])
+
+  netbsd_x86_64_supply_gp (AMD64_RAX_REGNUM, RAX);
+  netbsd_x86_64_supply_gp (AMD64_RBX_REGNUM, RBX);
+  netbsd_x86_64_supply_gp (AMD64_RCX_REGNUM, RCX);
+  netbsd_x86_64_supply_gp (AMD64_RDX_REGNUM, RDX);
+  netbsd_x86_64_supply_gp (AMD64_RSI_REGNUM, RSI);
+  netbsd_x86_64_supply_gp (AMD64_RDI_REGNUM, RDI);
+  netbsd_x86_64_supply_gp (AMD64_RBP_REGNUM, RBP);
+  netbsd_x86_64_supply_gp (AMD64_RSP_REGNUM, RSP);
+  netbsd_x86_64_supply_gp (AMD64_R8_REGNUM, R8);
+  netbsd_x86_64_supply_gp (AMD64_R9_REGNUM, R9);
+  netbsd_x86_64_supply_gp (AMD64_R10_REGNUM, R10);
+  netbsd_x86_64_supply_gp (AMD64_R11_REGNUM, R11);
+  netbsd_x86_64_supply_gp (AMD64_R12_REGNUM, R12);
+  netbsd_x86_64_supply_gp (AMD64_R13_REGNUM, R13);
+  netbsd_x86_64_supply_gp (AMD64_R14_REGNUM, R14);
+  netbsd_x86_64_supply_gp (AMD64_R15_REGNUM, R15);
+  netbsd_x86_64_supply_gp (AMD64_RIP_REGNUM, RIP);
+  netbsd_x86_64_supply_gp (AMD64_EFLAGS_REGNUM, RFLAGS);
+  netbsd_x86_64_supply_gp (AMD64_CS_REGNUM, CS);
+  netbsd_x86_64_supply_gp (AMD64_SS_REGNUM, SS);
+  netbsd_x86_64_supply_gp (AMD64_DS_REGNUM, DS);
+  netbsd_x86_64_supply_gp (AMD64_ES_REGNUM, ES);
+  netbsd_x86_64_supply_gp (AMD64_FS_REGNUM, FS);
+  netbsd_x86_64_supply_gp (AMD64_GS_REGNUM, GS);
 }
 
 #if 0
