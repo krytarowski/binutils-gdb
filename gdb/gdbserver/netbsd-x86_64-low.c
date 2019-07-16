@@ -23,101 +23,6 @@
 #include "arch/amd64.h"
 #include "x86-tdesc.h"
 
-/* The following two typedefs are defined in a .h file which is not
-   in the standard include path (/sys/include/family/x86/ucontext.h),
-   so we just duplicate them here.
-
-   Unfortunately for us, the definition of this structure differs between
-   LynxOS 5.x and LynxOS 178.  Rather than duplicate the code, we use
-   different definitions depending on the target.  */
-
-#ifdef VMOS_DEV
-#define LYNXOS_178
-#endif
-
-/* General register context */
-typedef struct usr_econtext {
-
-    uint32_t    uec_fault;
-    uint32_t    uec_es;
-    uint32_t    uec_ds;
-    uint32_t    uec_edi;
-    uint32_t    uec_esi;
-    uint32_t    uec_ebp;
-    uint32_t    uec_temp;
-    uint32_t    uec_ebx;
-    uint32_t    uec_edx;
-    uint32_t    uec_ecx;
-    uint32_t    uec_eax;
-    uint32_t    uec_inum;
-    uint32_t    uec_ecode;
-    uint32_t    uec_eip;
-    uint32_t    uec_cs;
-    uint32_t    uec_eflags;
-    uint32_t    uec_esp;
-    uint32_t    uec_ss;
-    uint32_t    uec_fs;
-    uint32_t    uec_gs;
-} usr_econtext_t;
-
-#if defined(LYNXOS_178)
-
-/* Floating point register context                                                                                      */
-typedef struct usr_fcontext {
-        uint32_t         ufc_control;
-        uint32_t         ufc_status;
-        uint32_t         ufc_tag;
-        uint8_t         *ufc_inst_off;
-        uint32_t         ufc_inst_sel;
-        uint8_t         *ufc_data_off;
-        uint32_t         ufc_data_sel;
-        struct ufp387_real {
-                uint16_t        umant4;
-        uint16_t        umant3;
-        uint16_t        umant2;
-        uint16_t        umant1;
-        uint16_t        us_and_e;
-        } ufc_reg[8];
-} usr_fcontext_t;
-
-#else /* This is LynxOS 5.x.  */
-
-/* Floating point and SIMD register context */
-typedef struct usr_fcontext {
-        uint16_t         ufc_control;
-        uint16_t         ufc_status;
-        uint16_t         ufc_tag;
-        uint16_t         ufc_opcode;
-        uint8_t         *ufc_inst_off;
-        uint32_t         ufc_inst_sel;
-        uint8_t         *ufc_data_off;
-        uint32_t         ufc_data_sel;
-        uint32_t         usse_mxcsr;
-        uint32_t         usse_mxcsr_mask;
-        struct ufp387_real {
-                uint16_t umant4;
-                uint16_t umant3;
-                uint16_t umant2;
-                uint16_t umant1;
-                uint16_t us_and_e;
-                uint16_t ureserved_1;
-                uint16_t ureserved_2;
-                uint16_t ureserved_3;
-        } ufc_reg[8];
-        struct uxmm_register {
-                uint16_t uchunk_1;
-                uint16_t uchunk_2;
-                uint16_t uchunk_3;
-                uint16_t uchunk_4;
-                uint16_t uchunk_5;
-                uint16_t uchunk_6;
-                uint16_t uchunk_7;
-                uint16_t uchunk_8;
-        } uxmm_reg[8];
-        char ureserved[16][14];
-} usr_fcontext_t;
-
-#endif
 
 /* The index of various registers inside the regcache.  */
 
@@ -207,6 +112,7 @@ netbsd_x86_64_store_gregset (struct regcache *regcache, const char *buf)
   netbsd_x86_64_supply_gp (I386_GS_REGNUM, gs);
 }
 
+#if 0
 /* Extract the first 16 bits of register REGNUM in the REGCACHE,
    and store these 2 bytes at DEST.
 
@@ -222,7 +128,9 @@ collect_16bit_register (struct regcache *regcache, int regnum, char *dest)
   collect_register (regcache, regnum, word);
   memcpy (dest, word, 2);
 }
+#endif
 
+#if 0
 /* The fill_function for the floating-point register set.  */
 
 static void
@@ -264,7 +172,9 @@ netbsd_x86_64_fill_fpregset (struct regcache *regcache, char *buf)
                     buf + offsetof (usr_fcontext_t, usse_mxcsr));
 #endif
 }
+#endif
 
+#if 0
 /* This is the supply counterpart for collect_16bit_register:
    It extracts a 2byte value from BUF, and uses that value to
    set REGNUM's value in the regcache.
@@ -282,7 +192,9 @@ supply_16bit_register (struct regcache *regcache, int regnum, const char *buf)
   memset (word + 2, 0, 2);
   supply_register (regcache, regnum, word);
 }
+#endif
 
+#if 0
 /* The store_function for the floating-point register set.  */
 
 static void
@@ -324,6 +236,7 @@ netbsd_x86_64_store_fpregset (struct regcache *regcache, const char *buf)
                    buf + offsetof (usr_fcontext_t, usse_mxcsr));
 #endif
 }
+#endif
 
 /* Implements the netbsd_target_ops.arch_setup routine.  */
 
@@ -342,11 +255,13 @@ netbsd_x86_64_arch_setup (void)
 
 struct netbsd_regset_info netbsd_target_regsets[] = {
   /* General Purpose Registers.  */
-  {PTRACE_GETREGS, PTRACE_SETREGS, sizeof(usr_econtext_t),
+  {PT_GETREGS, PT_SETREGS, sizeof(struct reg),
    netbsd_x86_64_fill_gregset, netbsd_x86_64_store_gregset},
   /* Floating Point Registers.  */
+#if 0
   { PTRACE_GETFPREGS, PTRACE_SETFPREGS, sizeof(usr_fcontext_t),
     netbsd_x86_64_fill_fpregset, netbsd_x86_64_store_fpregset },
+#endif
   /* End of list marker.  */
   {0, 0, -1, NULL, NULL }
 };
