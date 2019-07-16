@@ -49,7 +49,7 @@ struct process_info_private
 /* Print a debug trace on standard output if debug_threads is set.  */
 
 static void
-netbsd_debug (char *string, ...)
+netbsd_debug (const char *string, ...)
 {
   va_list args;
 
