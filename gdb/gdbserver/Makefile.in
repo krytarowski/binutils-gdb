@@ -179,6 +179,7 @@ SFILES = \
 	$(srcdir)/linux-x86-low.c \
 	$(srcdir)/linux-xtensa-low.c \
 	$(srcdir)/mem-break.c \
+	$(srcdir)/netbsd-low.c \
 	$(srcdir)/proc-service.c \
 	$(srcdir)/proc-service.list \
 	$(srcdir)/regcache.c \

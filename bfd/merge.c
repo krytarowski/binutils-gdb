@@ -338,7 +338,7 @@ sec_merge_emit (bfd *abfd, struct sec_merge_hash_entry *entry,
 
   /* Trailing alignment needed?  */
   off = sec->size - off;
-  if (off != 0)
+  if (pad != NULL && off != 0)
     {
       BFD_ASSERT (off <= pad_len);
       if (contents)

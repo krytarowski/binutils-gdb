@@ -525,7 +525,7 @@ startup_inferior (pid_t pid, int ntraps,
 
 	  case TARGET_WAITKIND_EXECD:
 	    /* Handle EXEC signals as if they were SIGTRAP signals.  */
-	    xfree (ws.value.execd_pathname);
+//	    xfree (ws.value.execd_pathname);
 	    resume_signal = GDB_SIGNAL_TRAP;
 	    switch_to_thread (event_ptid);
 	    break;

@@ -545,6 +545,9 @@ tui_erase_exec_info_content (struct tui_source_window_base *win_info)
 {
   struct tui_gen_win_info *exec_info = win_info->execution_info;
 
+  if (exec_info->handle == NULL)
+    return;
+
   werase (exec_info->handle);
   exec_info->refresh_window ();
 }
