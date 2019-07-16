@@ -31,7 +31,7 @@ struct target_desc : tdesc_element
 {
   /* A vector of elements of register definitions that
      describe the inferior's register set.  */
-  std::vector<struct reg> reg_defs;
+  std::vector<struct xreg> reg_defs;
 
   /* The register cache size, in bytes.  */
   int registers_size;
