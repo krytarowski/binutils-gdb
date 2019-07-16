@@ -421,6 +421,25 @@ netbsd_waitpid (int pid, int *stat_loc, int options)
   return ret;
 }
 
+/* Return the name of a file that can be opened to get the symbols for
+   the child process identified by PID.  */
+
+static char *
+pid_to_exec_file (pid_t pid)
+{
+  static const int name[] = {
+    CTL_KERN, KERN_PROC_ARGS, pid, KERN_PROC_PATHNAME,
+  };
+  static char path[MAXPATHLEN];
+  size_t len;
+
+  len = sizeof(path);
+  if (sysctl(name, __arraycount(name), path, &len, NULL, 0) == -1)
+    return NULL;
+
+  return path;
+}
+
 /* Implement the wait target_ops method.  */
 
 static ptid_t
