@@ -696,10 +696,11 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
 static int
 netbsd_kill (process_info *process)
 {
-  ptid_t ptid = netbsd_ptid_t (process->pid, 0);
+  pid_t pid = process->pid;
+  ptid_t ptid = netbsd_ptid_t (pid, 0);
   struct target_waitstatus status;
 
-  netbsd_ptrace (PTRACE_KILL, ptid, 0, 0, 0);
+  netbsd_ptrace (PT_KILL, pid, NULL, 0);
   netbsd_wait (ptid, &status, 0);
   the_target->mourn (process);
   return 0;
@@ -710,9 +711,10 @@ netbsd_kill (process_info *process)
 static int
 netbsd_detach (process_info *process)
 {
-  ptid_t ptid = netbsd_ptid_t (process->pid, 0);
+  pid_t pid = process->pid;
+  ptid_t ptid = netbsd_ptid_t (pid, 0);
 
-  netbsd_ptrace (PTRACE_DETACH, ptid, 0, 0, 0);
+  netbsd_ptrace (PT_DETACH, pid, (void *)1, 0);
   the_target->mourn (process);
   return 0;
 }
@@ -765,8 +767,8 @@ netbsd_fetch_registers (struct regcache *regcache, int regno)
       char *buf;
       int res;
 
-      buf = xmalloc (regset->size);
-      res = netbsd_ptrace (regset->get_request, inferior_ptid, (int) buf, 0, 0);
+      buf = (char *)xmalloc (regset->size);
+      res = netbsd_ptrace (regset->get_request, inferior_ptid.pid(), buf, inferior_ptid.lwp());
       if (res < 0)
         perror ("ptrace");
       regset->store_function (regcache, buf);
@@ -790,8 +792,8 @@ netbsd_store_registers (struct regcache *regcache, int regno)
       char *buf;
       int res;
 
-      buf = xmalloc (regset->size);
-      res = netbsd_ptrace (regset->get_request, inferior_ptid, (int) buf, 0, 0);
+      buf = (char *)xmalloc (regset->size);
+      res = netbsd_ptrace (regset->get_request, inferior_ptid.pid(), buf, inferior_ptid.lwp());
       if (res == 0)
         {
 	  /* Then overlay our cached registers on that.  */
