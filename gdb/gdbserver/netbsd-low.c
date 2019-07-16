@@ -19,10 +19,11 @@
 #include "target.h"
 #include "netbsd-low.h"
 
+#include <sys/param.h>
 #include <sys/types.h>
 
 #include <sys/ptrace.h>
-#include <sys/ioctl.h>
+#include <sys/sysctl.h>
 
 #include <limits.h>
 #include <unistd.h>
