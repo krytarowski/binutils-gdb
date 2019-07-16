@@ -109,7 +109,7 @@ netbsd_ptrace_pid_from_ptid (ptid_t ptid)
 
 /* Return a string image of the ptrace REQUEST number.  */
 
-static char *
+static const char *
 ptrace_request_to_str (int request)
 {
 #define CASE(X) case X: return #X
@@ -192,18 +192,18 @@ ptrace_request_to_str (int request)
    ptrace calls if debug traces are activated.  */
 
 static int
-netbsd_ptrace (int request, ptid_t ptid, int addr, int data, int addr2)
+netbsd_ptrace (int request, ptid_t ptid, void *addr, int data)
 {
   int result;
   const int pid = netbsd_ptrace_pid_from_ptid (ptid);
   int saved_errno;
 
   if (debug_threads)
-    fprintf (stderr, "PTRACE (%s, pid=%d(pid=%d, tid=%d), addr=0x%x, "
-             "data=0x%x, addr2=0x%x)",
-             ptrace_request_to_str (request), pid, PIDGET (pid), TIDGET (pid),
-             addr, data, addr2);
-  result = ptrace (request, pid, addr, data, addr2);
+    fprintf (stderr, "PTRACE (%s, pid=%d, addr=%p, "
+             "data=%#x)",
+             ptrace_request_to_str (request), pid,
+             addr, data);
+  result = ptrace (request, pid, addr, data);
   saved_errno = errno;
   if (debug_threads)
     fprintf (stderr, " -> %d (=0x%x)\n", result, result);
@@ -244,7 +244,7 @@ netbsd_ptrace_fun ()
     trace_start_error_with_name ("setpgid");
   if (ioctl (0, TIOCSPGRP, &pgrp) < 0)
     trace_start_error_with_name ("ioctl");
-  if (netbsd_ptrace (PTRACE_TRACEME, null_ptid, 0, 0, 0) < 0)
+  if (netbsd_ptrace (PT_TRACE_ME, null_ptid, 0, 0, 0) < 0)
     trace_start_error_with_name ("netbsd_ptrace");
 }
 
