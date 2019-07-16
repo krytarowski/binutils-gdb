@@ -667,8 +667,10 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
             }
           break;
         }
+      return wptid;
     }
-  return wptid;
+
+  return null_ptid;
 }
 
 /* A wrapper around netbsd_wait_1 that also prints debug traces when
