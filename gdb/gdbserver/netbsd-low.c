@@ -19,14 +19,16 @@
 #include "target.h"
 #include "netbsd-low.h"
 
-#include <limits.h>
-#include <sys/ptrace.h>
-#include <sys/piddef.h> /* Provides PIDGET, TIDGET, BUILDPID, etc.  */
-#include <unistd.h>
-#include <sys/ioctl.h>
 #include <sys/types.h>
-#include "gdbsupport/gdb_wait.h"
+
+#include <sys/ptrace.h>
+#include <sys/ioctl.h>
+
+#include <limits.h>
+#include <unistd.h>
 #include <signal.h>
+
+#include "gdbsupport/gdb_wait.h"
 #include "gdbsupport/filestuff.h"
 #include "gdbsupport/common-inferior.h"
 #include "nat/fork-inferior.h"
