@@ -233,18 +233,12 @@ netbsd_add_process (int pid, int attached)
 static void
 netbsd_ptrace_fun ()
 {
-  int pgrp;
-
   /* Switch child to its own process group so that signals won't
      directly affect GDBserver. */
-  pgrp = getpid();
-  if (pgrp < 0)
-    trace_start_error_with_name ("pgrp");
-  if (setpgid (0, pgrp) < 0)
+  if (setpgid (0, 0) < 0)
     trace_start_error_with_name ("setpgid");
-  if (ioctl (0, TIOCSPGRP, &pgrp) < 0)
-    trace_start_error_with_name ("ioctl");
-  if (netbsd_ptrace (PT_TRACE_ME, null_ptid, 0, 0, 0) < 0)
+
+  if (netbsd_ptrace (PT_TRACE_ME, null_ptid, NULL, 0) < 0)
     trace_start_error_with_name ("netbsd_ptrace");
 }
 
