@@ -424,7 +424,7 @@ netbsd_waitpid (int pid, int *stat_loc, int options)
 /* Implement the wait target_ops method.  */
 
 static ptid_t
-netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int options)
+netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int target_options)
 {
   pid_t pid;
   int ret;
