@@ -440,6 +440,23 @@ pid_to_exec_file (pid_t pid)
   return path;
 }
 
+static void
+netbsd_enable_event_reporting (pid_t pid)
+{
+  ptrace_event_t event;
+
+  ptrace (PT_GET_EVENT_MASK, pid, &event, sizeof(event));
+
+  event.pe_set_event |= PTRACE_FORK;
+  event.pe_set_event |= PTRACE_VFORK;
+  event.pe_set_event |= PTRACE_VFORK_DONE;
+  event.pe_set_event |= PTRACE_LWP_CREATE;
+  event.pe_set_event |= PTRACE_LWP_EXIT;
+  event.pe_set_event |= PTRACE_POSIX_SPAWN;
+
+  debug_ptrace (PT_SET_EVENT_MASK, pid, &event, sizeof(event));
+}
+
 /* Implement the wait target_ops method.  */
 
 static ptid_t
@@ -515,7 +532,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
       ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (status));
 
       // Find the lwp that caused the wait status change
-      if (ptrace(PT_GET_SIGINFO, wpid, &psi, sizeof(psi)) == -1)
+      if (debug_ptrace (PT_GET_SIGINFO, wpid, &psi, sizeof(psi)) == -1)
         perror_with_name (("ptrace"));
 
       /* For whole-process signals pick random thread */
@@ -569,7 +586,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
               break;
             case TRAP_LWP:
             case TRAP_CHLD:
-              if (ptrace(PT_GET_PROCESS_STATE, wpid, &pst, sizeof(pst)) == -1)
+              if (debug_ptrace (PT_GET_PROCESS_STATE, wpid, &pst, sizeof(pst)) == -1)
                 perror_with_name (("ptrace"));
               switch (pst.pe_report_event)
                 {
@@ -581,7 +598,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                     ourstatus->kind = TARGET_WAITKIND_VFORKED;
                   child = pst.pe_other_pid;
 
-                  wchild = waitpid (child, &status, 0);
+                  wchild = netbsd_waitpid (child, &status, 0);
 
                   if (wchild == -1)
                     perror_with_name (("waitpid"));
@@ -595,7 +612,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                       return wptid;
                     }
 
-                  if (ptrace(PT_GET_SIGINFO, child, &child_psi, sizeof(child_psi)) == -1)
+                  if (debug_ptrace (PT_GET_SIGINFO, child, &child_psi, sizeof(child_psi)) == -1)
                     perror_with_name (("ptrace"));
 
                   if (child_psi.psi_siginfo.si_signo != SIGTRAP)
@@ -640,7 +657,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                   ourstatus->kind = TARGET_WAITKIND_THREAD_EXITED;
 
 #if 0
-                  if (ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
+                  if (debug_ptrace (PT_CONTINUE, pid, (void *)1, 0) == -1)
                     perror_with_name (("ptrace"));
 #endif
                   break;
