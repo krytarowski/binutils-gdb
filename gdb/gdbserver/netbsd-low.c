@@ -408,37 +408,16 @@ netbsd_continue (ptid_t ptid)
    of NetBSD waitpid.  */
 
 static int
-netbsd_waitpid (int pid, int *stat_loc)
+netbsd_waitpid (int pid, int *stat_loc, options)
 {
-  int ret = 0;
+  int ret;
 
-  while (1)
+  do
     {
-      ret = waitpid (pid, stat_loc, WNOHANG);
-      if (ret < 0)
-        {
-	  /* An ECHILD error is not indicative of a real problem.
-	     It happens for instance while waiting for the inferior
-	     to stop after attaching to it.  */
-	  if (errno != ECHILD)
-	    perror_with_name ("waitpid (WNOHANG)");
-	}
-      if (ret > 0)
-        break;
-      /* No event with WNOHANG.  See if there is one with WUNTRACED.  */
-      ret = waitpid (pid, stat_loc, WNOHANG | WUNTRACED);
-      if (ret < 0)
-        {
-	  /* An ECHILD error is not indicative of a real problem.
-	     It happens for instance while waiting for the inferior
-	     to stop after attaching to it.  */
-	  if (errno != ECHILD)
-	    perror_with_name ("waitpid (WNOHANG|WUNTRACED)");
-	}
-      if (ret > 0)
-        break;
-      usleep (1000);
+      ret = waitpid (pid, stat_loc, options);
     }
+  while (ret == -1 && errno == EINTR);
+
   return ret;
 }
 
@@ -447,7 +426,7 @@ netbsd_waitpid (int pid, int *stat_loc)
 static ptid_t
 netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int options)
 {
-  int pid;
+  pid_t pid;
   int ret;
   int wstat;
   ptid_t new_ptid;
@@ -455,11 +434,15 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int options)
   if (ptid == minus_one_ptid)
     pid = netbsd_ptid_get_pid (ptid_of (current_thread));
   else
-    pid = BUILDPID (netbsd_ptid_get_pid (ptid), netbsd_ptid_get_tid (ptid));
+    pid = netbsd_ptid_get_pid (ptid);
+
+  int options = 0;
+  if (target_options & TARGET_WNOHANG)
+    options |= WNOHANG;
 
 retry:
 
-  ret = netbsd_waitpid (pid, &wstat);
+  ret = netbsd_waitpid (pid, &wstat, options);
   new_ptid = netbsd_ptid_t (ret, ((union wait *) &wstat)->w_tid);
   find_process_pid (ret)->priv->last_wait_event_ptid = new_ptid;
 
