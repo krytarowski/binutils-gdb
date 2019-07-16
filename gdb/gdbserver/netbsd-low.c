@@ -697,6 +697,7 @@ static int
 netbsd_kill (process_info *process)
 {
   pid_t pid = process->pid;
+  ptid_t ptid = netbsd_ptid_t (pid, 0);
   struct target_waitstatus status;
 
   netbsd_ptrace (PT_KILL, pid, NULL, 0);
