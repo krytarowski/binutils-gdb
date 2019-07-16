@@ -833,16 +833,16 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 
       int rv = netbsd_ptrace (PT_IO, inferior_ptid.pid(), &io, 0);
       if (rv == -1)
-        return TARGET_XFER_E_IO;
+        return errno;
       if (io.piod_len == 0)
-        return TARGET_XFER_EOF;
+        return 0;
 
       bytes_read += io.piod_len;
       io.piod_len = size - bytes_read;
     }
   while (bytes_read < size);
 
-  return TARGET_XFER_OK;
+  return 0;
 }
 
 /* Implement the write_memory target_ops method.  */
