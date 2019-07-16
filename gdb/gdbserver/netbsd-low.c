@@ -291,24 +291,13 @@ netbsd_create_inferior (const char *program,
 static void
 netbsd_add_threads_after_attach (int pid)
 {
-  /* Ugh!  There appears to be no way to get the list of threads
-     in the program we just attached to.  So get the list by calling
-     the "ps" command.  This is only needed now, as we will then
-     keep the thread list up to date thanks to thread creation and
-     exit notifications.  */
-  FILE *f;
-  char buf[256];
-  int thread_pid, thread_tid;
-
-  f = popen ("ps atx", "r");
-  if (f == NULL)
-    perror_with_name ("Cannot get thread list");
-
-  while (fgets (buf, sizeof (buf), f) != NULL)
-    if ((sscanf (buf, "%d %d", &thread_pid, &thread_tid) == 2
-	 && thread_pid == pid))
+  struct ptrace_lwpinfo pl;
+  int val;
+  pl.pl_lwpid = 0;
+  while ((val = netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl))) != -1 &&
+    pl.pl_lwpid != 0)
     {
-      ptid_t thread_ptid = netbsd_ptid_t (pid, thread_tid);
+      ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
 
       if (!find_thread_ptid (thread_ptid))
 	{
@@ -317,8 +306,6 @@ netbsd_add_threads_after_attach (int pid)
 	  add_thread (thread_ptid, NULL);
 	}
     }
-
-  pclose (f);
 }
 
 /* Implement the attach target_ops method.  */
