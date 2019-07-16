@@ -15,15 +15,15 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef GDBSERVER_LYNX_LOW_H
-#define GDBSERVER_LYNX_LOW_H
+#ifndef GDBSERVER_NETBSD_LOW_H
+#define GDBSERVER_NETBSD_LOW_H
 
 struct regcache;
 struct target_desc;
 
 /*  Some information relative to a given register set.   */
 
-struct lynx_regset_info
+struct netbsd_regset_info
 {
   /* The ptrace request needed to get/set registers of this set.  */
   int get_request, set_request;
@@ -40,20 +40,19 @@ struct lynx_regset_info
 
    This list should be created by the target-specific code.  */
 
-extern struct lynx_regset_info lynx_target_regsets[];
+extern struct netbsd_regset_info netbsd_target_regsets[];
 
-/* The target-specific operations for LynxOS support.  */
+/* The target-specific operations for NetBSD support.  */
 
-struct lynx_target_ops
+struct netbsd_target_ops
 {
   /* Architecture-specific setup.  */
   void (*arch_setup) (void);
 };
 
-extern struct lynx_target_ops the_low_target;
+extern struct netbsd_target_ops the_low_target;
 
-/* The inferior's target description.  This is a global because the
-   LynxOS ports support neither bi-arch nor multi-process.  */
-extern const struct target_desc *lynx_tdesc;
+/* XXX: multilib */
+extern const struct target_desc *netbsd_tdesc;
 
-#endif /* GDBSERVER_LYNX_LOW_H */
+#endif /* GDBSERVER_NETBSD_LOW_H */
