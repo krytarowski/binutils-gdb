@@ -91,6 +91,7 @@ netbsd_ptid_get_pid (ptid_t ptid)
 
 /* Return the NetBSD tid of the given PTID.  */
 
+#if 0
 static long
 netbsd_ptid_get_tid (ptid_t ptid)
 {
@@ -98,15 +99,18 @@ netbsd_ptid_get_tid (ptid_t ptid)
      of the ptid.  */
   return ptid.lwp ();
 }
+#endif
 
 /* For a given PTID, return the associated PID as known by the NetBSD
    ptrace layer.  */
 
+#if 0
 static pid_t
 netbsd_ptrace_pid_from_ptid (ptid_t ptid)
 {
   return netbsd_ptid_get_pid (ptid);
 }
+#endif
 
 /* Return a string image of the ptrace REQUEST number.  */
 
