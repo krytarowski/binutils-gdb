@@ -101,10 +101,10 @@ netbsd_ptid_get_tid (ptid_t ptid)
 /* For a given PTID, return the associated PID as known by the NetBSD
    ptrace layer.  */
 
-static int
+static pid_t
 netbsd_ptrace_pid_from_ptid (ptid_t ptid)
 {
-  return BUILDPID (netbsd_ptid_get_pid (ptid), netbsd_ptid_get_tid (ptid));
+  return netbsd_ptid_get_pid (ptid);
 }
 
 /* Return a string image of the ptrace REQUEST number.  */
