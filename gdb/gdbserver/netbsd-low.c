@@ -424,7 +424,7 @@ netbsd_waitpid (int pid, int *stat_loc, int options)
 /* Implement the wait target_ops method.  */
 
 static ptid_t
-netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *status, int target_options)
+netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_options)
 {
   pid_t pid;
   int status;
@@ -642,11 +642,12 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
 {
   ptid_t new_ptid;
 
-  netbsd_debug ("netbsd_wait (pid = %d, tid = %ld)",
-              netbsd_ptid_get_pid (ptid), netbsd_ptid_get_tid (ptid));
+  netbsd_debug ("netbsd_wait (pid = %d, %s)",
+              netbsd_ptid_get_pid (ptid),
+              options & TARGET_WNOHANG ? "WNOHANG" : "" );
   new_ptid = netbsd_wait_1 (ptid, status, options);
-  netbsd_debug ("          -> (pid=%d, tid=%ld, status->kind = %d)",
-	      netbsd_ptid_get_pid (new_ptid), netbsd_ptid_get_tid (new_ptid),
+  netbsd_debug ("          -> (pid=%d, status->kind = %d)",
+	      netbsd_ptid_get_pid (new_ptid),
 	      status->kind);
   return new_ptid;
 }
