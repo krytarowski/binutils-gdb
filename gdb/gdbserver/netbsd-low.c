@@ -408,7 +408,7 @@ netbsd_continue (ptid_t ptid)
    of NetBSD waitpid.  */
 
 static int
-netbsd_waitpid (int pid, int *stat_loc, options)
+netbsd_waitpid (int pid, int *stat_loc, int options)
 {
   int ret;
 
