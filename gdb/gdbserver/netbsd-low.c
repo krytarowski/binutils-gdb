@@ -820,6 +820,12 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 
   int bytes_read = 0;
 
+  if (size == 0)
+    {
+      /* Zero length write always succeeds.  */
+      return 0;
+    }
+
   do
     {
       io.piod_offs = (void *)(memaddr + bytes_read);
@@ -852,6 +858,12 @@ netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int size)
 
   int bytes_written = 0;
 
+  if (size == 0)
+    {
+      /* Zero length write always succeeds.  */
+      return 0;
+    }
+
   do
     {
       io.piod_addr = (void *)(myaddr + bytes_written);
@@ -859,16 +871,16 @@ netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int size)
 
       int rv = netbsd_ptrace (PT_IO, inferior_ptid.pid(), &io, 0);
       if (rv == -1)
-        return TARGET_XFER_E_IO;
+        return errno;
       if (io.piod_len == 0)
-        return TARGET_XFER_EOF;
+        return 0;
 
       bytes_written += io.piod_len;
       io.piod_len = size - bytes_written;
     }
   while (bytes_written < size);
 
-  return TARGET_XFER_OK;
+  return 0;
 }
 
 /* Implement the kill_request target_ops method.  */
