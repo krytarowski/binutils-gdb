@@ -301,7 +301,7 @@ netbsd_add_threads_after_attach (pid_t pid)
       if (!find_thread_ptid (thread_ptid))
 	{
 	  netbsd_debug ("New thread: (pid = %d, tid = %d)",
-		      pid, thread_tid);
+		      pid, pl.pl_lwpid);
 	  add_thread (thread_ptid, NULL);
 	}
     }
