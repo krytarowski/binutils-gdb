@@ -842,42 +842,33 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 /* Implement the write_memory target_ops method.  */
 
 static int
-netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int len)
+netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int size)
 {
-  /* On netbsdOS, memory writes needs to be performed in chunks the size
-     of int types, and they should also be aligned accordingly.  */
-  int buf;
-  const int xfer_size = sizeof (buf);
-  CORE_ADDR addr = memaddr & -(CORE_ADDR) xfer_size;
+  struct ptrace_io_desc io;
+  io.piod_op = PIOD_WRITE_D;
+  io.piod_len = size;
+
   ptid_t inferior_ptid = ptid_of (current_thread);
 
-  while (addr < memaddr + len)
+  int bytes_written = 0;
+
+  do
     {
-      int skip = 0;
-      int truncate = 0;
+      io.piod_addr = (void *)(myaddr + bytes_written);
+      io.piod_offs = (void *)(memaddr + bytes_written);
 
-      if (addr < memaddr)
-        skip = memaddr - addr;
-      if (addr + xfer_size > memaddr + len)
-        truncate = addr + xfer_size - memaddr - len;
-      if (skip > 0 || truncate > 0)
-	{
-	  /* We need to read the memory at this address in order to preserve
-	     the data that we are not overwriting.  */
-	  netbsd_read_memory (addr, (unsigned char *) &buf, xfer_size);
-	  if (errno)
-	    return errno;
-	}
-      memcpy ((gdb_byte *) &buf + skip, myaddr + (addr - memaddr) + skip,
-              xfer_size - skip - truncate);
-      errno = 0;
-      netbsd_ptrace (PTRACE_POKETEXT, inferior_ptid, addr, buf, 0);
-      if (errno)
-        return errno;
-      addr += xfer_size;
+      int rv = netbsd_ptrace (PT_IO, inferior_ptid.pid(), &io, 0);
+      if (rv == -1)
+        return TARGET_XFER_E_IO;
+      if (io.piod_len == 0)
+        return TARGET_XFER_EOF;
+
+      bytes_written += io.piod_len;
+      io.piod_len = size - bytes_written;
     }
+  while (bytes_written < size);
 
-  return 0;
+  return TARGET_XFER_OK;
 }
 
 /* Implement the kill_request target_ops method.  */
