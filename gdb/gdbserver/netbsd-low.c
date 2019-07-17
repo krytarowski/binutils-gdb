@@ -270,7 +270,7 @@ static int
 netbsd_create_inferior (const char *program,
 		      const std::vector<char *> &program_args)
 {
-  int pid;
+  pid_t pid;
   std::string str_program_args = stringify_argv (program_args);
 
   netbsd_debug ("netbsd_create_inferior ()");
@@ -280,12 +280,21 @@ netbsd_create_inferior (const char *program,
 		       get_environ ()->envp (), netbsd_ptrace_fun,
 		       NULL, NULL, NULL, NULL);
 
+  netbsd_add_process (pid, 0);
+
+  struct ptrace_lwpinfo pl;
+  pl.pl_lwpid = 0;
+  while (ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
+    pl.pl_lwpid != 0)
+    {
+      ptid_t ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
+
+      if (!find_thread_ptid (ptid))
+        add_thread (ptid, NULL);
+    }
+
   post_fork_inferior (pid, program);
 
-  netbsd_add_process (pid, 0);
-  /* Do not add the process thread just yet, as we do not know its tid.
-     We will add it later, during the wait for the STOP event corresponding
-     to the netbsd_ptrace (PTRACE_TRACEME) call above.  */
   return pid;
 }
 
