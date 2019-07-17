@@ -22,7 +22,7 @@
 #include "gdbsupport/x86-xstate.h"
 #include "arch/amd64.h"
 #include "x86-tdesc.h"
-
+#include "tdesc.h"
 
 /* The index of various registers inside the regcache.  */
 
@@ -289,7 +289,7 @@ netbsd_x86_64_arch_setup (void)
   struct target_desc *tdesc
     = amd64_create_target_description (X86_XSTATE_SSE_MASK, false, false, false);
 
-  init_target_desc (tdesc, x86_64_expedite_regs);
+  init_target_desc (tdesc, amd64_expedite_regs);
 
   netbsd_tdesc = tdesc;
 }
