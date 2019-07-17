@@ -26,7 +26,9 @@ static const char *i386_expedite_regs[] ATTRIBUTE_UNUSED
 
 #ifdef __x86_64__
 /* The "expedite" registers for x86_64 targets.  */
+#if 0
 static const char *amd64_expedite_regs[] = {"rbp", "rsp", "rip", NULL};
+#endif
 #endif
 
 #endif /* GDBSERVER_X86_TDESC_H */

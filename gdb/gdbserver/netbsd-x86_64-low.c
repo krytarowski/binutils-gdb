@@ -22,41 +22,61 @@
 #include "gdbsupport/x86-xstate.h"
 #include "arch/amd64.h"
 #include "x86-tdesc.h"
-//#include "amd64-tdep.h"
 
 
 /* The index of various registers inside the regcache.  */
 
 enum netbsd_x86_64_gdb_regnum
 {
-  I386_EAX_REGNUM,
-  I386_ECX_REGNUM,
-  I386_EDX_REGNUM,
-  I386_EBX_REGNUM,
-  I386_ESP_REGNUM,
-  I386_EBP_REGNUM,
-  I386_ESI_REGNUM,
-  I386_EDI_REGNUM,
-  I386_EIP_REGNUM,
-  I386_EFLAGS_REGNUM,
-  I386_CS_REGNUM,
-  I386_SS_REGNUM,
-  I386_DS_REGNUM,
-  I386_ES_REGNUM,
-  I386_FS_REGNUM,
-  I386_GS_REGNUM,
-  I386_ST0_REGNUM,
-  I386_FCTRL_REGNUM = I386_ST0_REGNUM + 8,
-  I386_FSTAT_REGNUM,
-  I386_FTAG_REGNUM,
-  I386_FISEG_REGNUM,
-  I386_FIOFF_REGNUM,
-  I386_FOSEG_REGNUM,
-  I386_FOOFF_REGNUM,
-  I386_FOP_REGNUM,
-  I386_XMM0_REGNUM = 32,
-  I386_MXCSR_REGNUM = I386_XMM0_REGNUM + 8,
-  I386_SENTINEL_REGUM
+  AMD64_RAX_REGNUM,             /* %rax */
+  AMD64_RBX_REGNUM,             /* %rbx */
+  AMD64_RCX_REGNUM,             /* %rcx */
+  AMD64_RDX_REGNUM,             /* %rdx */
+  AMD64_RSI_REGNUM,             /* %rsi */
+  AMD64_RDI_REGNUM,             /* %rdi */
+  AMD64_RBP_REGNUM,             /* %rbp */
+  AMD64_RSP_REGNUM,             /* %rsp */
+  AMD64_R8_REGNUM,              /* %r8 */
+  AMD64_R9_REGNUM,              /* %r9 */
+  AMD64_R10_REGNUM,             /* %r10 */
+  AMD64_R11_REGNUM,             /* %r11 */
+  AMD64_R12_REGNUM,             /* %r12 */
+  AMD64_R13_REGNUM,             /* %r13 */
+  AMD64_R14_REGNUM,             /* %r14 */
+  AMD64_R15_REGNUM,             /* %r15 */
+  AMD64_RIP_REGNUM,             /* %rip */
+  AMD64_EFLAGS_REGNUM,          /* %eflags */
+  AMD64_CS_REGNUM,              /* %cs */
+  AMD64_SS_REGNUM,              /* %ss */
+  AMD64_DS_REGNUM,              /* %ds */
+  AMD64_ES_REGNUM,              /* %es */
+  AMD64_FS_REGNUM,              /* %fs */
+  AMD64_GS_REGNUM,              /* %gs */
+  AMD64_ST0_REGNUM = 24,        /* %st0 */
+  AMD64_ST1_REGNUM,             /* %st1 */
+  AMD64_FCTRL_REGNUM = AMD64_ST0_REGNUM + 8,
+  AMD64_FSTAT_REGNUM = AMD64_ST0_REGNUM + 9,
+  AMD64_FTAG_REGNUM = AMD64_ST0_REGNUM + 10,
+  AMD64_XMM0_REGNUM = 40,       /* %xmm0 */
+  AMD64_XMM1_REGNUM,            /* %xmm1 */
+  AMD64_MXCSR_REGNUM = AMD64_XMM0_REGNUM + 16,
+  AMD64_YMM0H_REGNUM,           /* %ymm0h */
+  AMD64_YMM15H_REGNUM = AMD64_YMM0H_REGNUM + 15,
+  AMD64_BND0R_REGNUM = AMD64_YMM15H_REGNUM + 1,
+  AMD64_BND3R_REGNUM = AMD64_BND0R_REGNUM + 3,
+  AMD64_BNDCFGU_REGNUM,
+  AMD64_BNDSTATUS_REGNUM,
+  AMD64_XMM16_REGNUM,
+  AMD64_XMM31_REGNUM = AMD64_XMM16_REGNUM + 15,
+  AMD64_YMM16H_REGNUM,
+  AMD64_YMM31H_REGNUM = AMD64_YMM16H_REGNUM + 15,
+  AMD64_K0_REGNUM,
+  AMD64_K7_REGNUM = AMD64_K0_REGNUM + 7,
+  AMD64_ZMM0H_REGNUM,
+  AMD64_ZMM31H_REGNUM = AMD64_ZMM0H_REGNUM + 31,
+  AMD64_PKRU_REGNUM,
+  AMD64_FSBASE_REGNUM,
+  AMD64_GSBASE_REGNUM
 };
 
 /* The fill_function for the general-purpose register set.  */
@@ -69,7 +89,7 @@ netbsd_x86_64_fill_gregset (struct regcache *regcache, char *buf)
   r = (struct reg *)buf;
 
 #define netbsd_x86_64_collect_gp(regnum, fld) \
-  collect_register (regcache, regnum, r->regs[_REG_##fld])
+  collect_register (regcache, regnum, &r->regs[_REG_##fld])
 
   netbsd_x86_64_collect_gp (AMD64_RAX_REGNUM, RAX);
   netbsd_x86_64_collect_gp (AMD64_RBX_REGNUM, RBX);
@@ -107,7 +127,7 @@ netbsd_x86_64_store_gregset (struct regcache *regcache, const char *buf)
   r = (struct reg *)buf;
 
 #define netbsd_x86_64_supply_gp(regnum, fld) \
-  supply_register (regcache, regnum, r->regs[_REG_##fld])
+  supply_register (regcache, regnum, &r->regs[_REG_##fld])
 
   netbsd_x86_64_supply_gp (AMD64_RAX_REGNUM, RAX);
   netbsd_x86_64_supply_gp (AMD64_RBX_REGNUM, RBX);
@@ -267,7 +287,7 @@ static void
 netbsd_x86_64_arch_setup (void)
 {
   struct target_desc *tdesc
-    = x86_64_create_target_description (X86_XSTATE_SSE_MASK, false, false);
+    = amd64_create_target_description (X86_XSTATE_SSE_MASK, false, false, false);
 
   init_target_desc (tdesc, x86_64_expedite_regs);
 
