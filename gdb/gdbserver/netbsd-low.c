@@ -203,8 +203,8 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   int saved_errno;
 
   if (debug_threads)
-    fprintf (stderr, "PTRACE (%s, pid=%d, addr=%p, "
-             "data=%#x)",
+    fprintf (stderr, "[%d] PTRACE (%s, pid=%d, addr=%p, "
+             "data=%#x)", getpid(),
              ptrace_request_to_str (request), pid,
              addr, data);
   result = ptrace (request, pid, addr, data);
@@ -284,7 +284,7 @@ netbsd_create_inferior (const char *program,
 
   struct ptrace_lwpinfo pl;
   pl.pl_lwpid = 0;
-  while (ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
+  while (netbsd_ptrace (PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
     pl.pl_lwpid != 0)
     {
       ptid_t ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
