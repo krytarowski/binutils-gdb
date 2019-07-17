@@ -207,10 +207,11 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
              "data=%#x)", getpid(),
              ptrace_request_to_str (request), pid,
              addr, data);
-  result = ptrace (request, pid, addr, data);
   saved_errno = errno;
+  errno = 0;
+  result = ptrace (request, pid, addr, data);
   if (debug_threads)
-    fprintf (stderr, " -> %d (=0x%x)\n", result, result);
+    fprintf (stderr, " -> %d (=%#x errno=%d)\n", result, result, errno);
 
   errno = saved_errno;
   return result;
@@ -264,6 +265,44 @@ netbsd_ptrace_fun ()
     }
 }
 
+static void
+netbsd_add_threads_sysctl (pid_t pid)
+{
+  struct kinfo_lwp *kl;
+  int mib[5];
+  size_t i, nlwps;
+  size_t size;
+
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_LWP;
+  mib[2] = pid;
+  mib[3] = sizeof(struct kinfo_lwp);
+  mib[4] = 0;
+
+  if (sysctl(mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+    trace_start_error_with_name ("sysctl");
+
+  mib[4] = size / sizeof(size_t);
+
+  kl = (struct kinfo_lwp *) xmalloc (size);
+  if (kl == NULL)
+    trace_start_error_with_name ("malloc");
+
+  if (sysctl(mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
+    trace_start_error_with_name ("sysctl");
+
+  nlwps = size / sizeof(struct kinfo_lwp);
+
+  for (i = 0; i < nlwps; i++) {
+    ptid_t ptid = netbsd_ptid_t (pid, kl[i].l_lid);
+    if (debug_threads)
+      fprintf (stderr, "Adding thread (pid=%d, lwpid=%d)\n", pid, kl[i].l_lid);
+    add_thread (ptid, NULL);
+  }
+
+  xfree(kl);
+}
+
 /* Implement the create_inferior method of the target_ops vector.  */
 
 static int
@@ -282,16 +321,7 @@ netbsd_create_inferior (const char *program,
 
   netbsd_add_process (pid, 0);
 
-  struct ptrace_lwpinfo pl;
-  pl.pl_lwpid = 0;
-  while (netbsd_ptrace (PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
-    pl.pl_lwpid != 0)
-    {
-      ptid_t ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
-
-      if (!find_thread_ptid (ptid))
-        add_thread (ptid, NULL);
-    }
+  netbsd_add_threads_sysctl (pid);
 
   post_fork_inferior (pid, program);
 
