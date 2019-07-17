@@ -202,16 +202,15 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   int result;
   int saved_errno;
 
-  if (debug_threads)
-    fprintf (stderr, "[%d] PTRACE (%s, pid=%d, addr=%p, "
+  netbsd_debug ("[%d] PTRACE (%s, pid=%d, addr=%p, "
              "data=%#x)", getpid(),
              ptrace_request_to_str (request), pid,
              addr, data);
   saved_errno = errno;
   errno = 0;
   result = ptrace (request, pid, addr, data);
-  if (debug_threads)
-    fprintf (stderr, " -> %d (=%#x errno=%d)\n", result, result, errno);
+
+  netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
 
   errno = saved_errno;
   return result;
@@ -295,8 +294,7 @@ netbsd_add_threads_sysctl (pid_t pid)
 
   for (i = 0; i < nlwps; i++) {
     ptid_t ptid = netbsd_ptid_t (pid, kl[i].l_lid);
-    if (debug_threads)
-      fprintf (stderr, "Adding thread (pid=%d, lwpid=%d)\n", pid, kl[i].l_lid);
+    netbsd_debug ("Registering thread (pid=%d, lwpid=%d)\n", pid, kl[i].l_lid);
     add_thread (ptid, NULL);
   }
 
