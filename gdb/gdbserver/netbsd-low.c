@@ -511,9 +511,9 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
   int status;
 
   if (ptid == minus_one_ptid)
-    pid = netbsd_ptid_get_pid (ptid_of (current_thread));
-  else
-    pid = netbsd_ptid_get_pid (ptid);
+    ptid = ptid_of (current_thread);
+
+  pid = netbsd_ptid_get_pid (ptid);
 
   int options = 0;
   if (target_options & TARGET_WNOHANG)
