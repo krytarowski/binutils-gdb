@@ -33,6 +33,7 @@
 #include "gdbsupport/filestuff.h"
 #include "gdbsupport/common-inferior.h"
 #include "nat/fork-inferior.h"
+#include "hostio.h"
 
 int using_threads = 1;
 
@@ -995,7 +996,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* read_offsets */
   NULL,  /* get_tls_address */
   NULL,  /* qxfer_spu */
-  NULL,  /* hostio_last_error */
+  hostio_last_error_from_errno,
   NULL,  /* qxfer_osdata */
   NULL,  /* qxfer_siginfo */
   NULL,  /* supports_non_stop */
