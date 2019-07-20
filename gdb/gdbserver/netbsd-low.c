@@ -936,7 +936,31 @@ netbsd_request_interrupt (void)
   kill (netbsd_ptid_get_pid (inferior_ptid), SIGINT);
 }
 
-/* The netbsdOS target_ops vector.  */
+/* Check if fork events are supported.  */
+
+static int
+netbsd_supports_fork_events (void)
+{
+  return 1;
+}
+
+/* Check if vfork events are supported.  */
+
+static int
+netbsd_supports_vfork_events (void)
+{
+  return 1;
+}
+
+/* Check if exec events are supported.  */
+
+static int
+netbsd_supports_exec_events (void)
+{
+  return 1;
+}
+
+/* The NetBSD target_ops vector.  */
 
 static struct target_ops netbsd_target_ops = {
   netbsd_create_inferior,
@@ -978,9 +1002,9 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* async */
   NULL,  /* start_non_stop */
   NULL,  /* supports_multi_process */
-  NULL,  /* supports_fork_events */
-  NULL,  /* supports_vfork_events */
-  NULL,  /* supports_exec_events */
+  netbsd_supports_fork_events,
+  netbsd_supports_vfork_events,
+  netbsd_supports_exec_events,
   NULL,  /* handle_new_gdb_connection */
   NULL,  /* handle_monitor_command */
 };
