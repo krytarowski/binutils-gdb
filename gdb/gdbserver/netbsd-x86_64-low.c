@@ -88,8 +88,10 @@ netbsd_x86_64_fill_gregset (struct regcache *regcache, char *buf)
 
   r = (struct reg *)buf;
 
-#define netbsd_x86_64_collect_gp(regnum, fld) \
-  collect_register (regcache, regnum, &r->regs[_REG_##fld])
+#define netbsd_x86_64_collect_gp(regnum, fld) do { \
+  collect_register (regcache, regnum, &r->regs[_REG_##fld]); \
+  printf("collect_register(%p, %d, %p -> %lx)\n", regcache, regnum, &r->regs[_REG_##fld], r->regs[_REG_##fld]); \
+  } while (0)
 
   netbsd_x86_64_collect_gp (AMD64_RAX_REGNUM, RAX);
   netbsd_x86_64_collect_gp (AMD64_RBX_REGNUM, RBX);
@@ -126,8 +128,10 @@ netbsd_x86_64_store_gregset (struct regcache *regcache, const char *buf)
 
   r = (struct reg *)buf;
 
-#define netbsd_x86_64_supply_gp(regnum, fld) \
-  supply_register (regcache, regnum, &r->regs[_REG_##fld])
+#define netbsd_x86_64_supply_gp(regnum, fld) do { \
+  supply_register (regcache, regnum, &r->regs[_REG_##fld]); \
+  printf("supply_register(%p, %d, %p -> %lx)\n", regcache, regnum, &r->regs[_REG_##fld], r->regs[_REG_##fld]); \
+  } while(0)
 
   netbsd_x86_64_supply_gp (AMD64_RAX_REGNUM, RAX);
   netbsd_x86_64_supply_gp (AMD64_RBX_REGNUM, RBX);
