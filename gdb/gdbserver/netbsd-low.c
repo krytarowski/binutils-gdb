@@ -972,22 +972,26 @@ static int
 get_phdr_phnum_from_proc_auxv (const int pid, const int is_elf64,
                                CORE_ADDR *phdr_memaddr, int *num_phdr)
 {
-  char filename[PATH_MAX];
-  int fd;
+  struct ptrace_io_desc pio;
   const int auxv_size = is_elf64
     ? sizeof (Aux64Info) : sizeof (Aux32Info);
-  char buf[sizeof (Aux64Info)];  /* The larger of the two.  */
+  char *auxv_buf;
+  char *buf;
+  const size_t auxv_buf_size = 100 * sizeof(Aux64Info);
 
-  xsnprintf (filename, sizeof filename, "/proc/%d/auxv", pid);
+  auxv_buf = (char *)xmalloc(auxv_buf_size);
 
-  fd = open (filename, O_RDONLY);
-  if (fd < 0)
-    return 1;
+  pio.piod_op = PIOD_READ_AUXV;
+  pio.piod_offs = 0;
+  pio.piod_addr = auxv_buf;
+  pio.piod_len = auxv_buf_size;
+
+  netbsd_ptrace (PT_IO, pid, &pio, 0);
 
   *phdr_memaddr = 0;
   *num_phdr = 0;
-  while (read (fd, buf, auxv_size) == auxv_size
-         && (*phdr_memaddr == 0 || *num_phdr == 0))
+
+  for (buf = auxv_buf; buf < (auxv_buf + auxv_buf_size); buf += auxv_size)
     {
       if (is_elf64)
         {
@@ -1017,9 +1021,12 @@ get_phdr_phnum_from_proc_auxv (const int pid, const int is_elf64,
               break;
             }
         }
+
+      if (*phdr_memaddr != 0 && *num_phdr != 0)
+        break;
     }
 
-  close (fd);
+  xfree (auxv_buf);
 
   if (*phdr_memaddr == 0 || *num_phdr == 0)
     {
