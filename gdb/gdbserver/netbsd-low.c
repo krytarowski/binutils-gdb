@@ -942,6 +942,25 @@ netbsd_request_interrupt (void)
   kill (netbsd_ptid_get_pid (inferior_ptid), SIGINT);
 }
 
+/* Copy LEN bytes from inferior's auxiliary vector starting at OFFSET
+   to debugger memory starting at MYADDR.  */
+
+static int
+netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
+{
+  struct ptrace_io_desc pio;
+  int pid = lwpid_of (current_thread);
+
+  pio.piod_op = PIOD_READ_AUXV;
+  pio.piod_offs = (void *)(intptr_t)offset;
+  pio.piod_addr = myaddr;
+  pio.piod_len = len;
+
+  netbsd_ptrace (PT_IO, pid, &pio, 0);
+
+  return pio.piod_len;
+}
+
 /* Check if fork events are supported.  */
 
 static int
@@ -1530,7 +1549,7 @@ static struct target_ops netbsd_target_ops = {
   netbsd_write_memory,
   NULL,  /* look_up_symbols */
   netbsd_request_interrupt,
-  NULL,  /* read_auxv */
+  netbsd_read_auxv,
   NULL,  /* supports_z_point_type */
   NULL,  /* insert_point */
   NULL,  /* remove_point */
