@@ -29,6 +29,8 @@
 #include <unistd.h>
 #include <signal.h>
 
+#include <elf.h>
+
 #include "gdbsupport/gdb_wait.h"
 #include "gdbsupport/filestuff.h"
 #include "gdbsupport/common-inferior.h"
@@ -46,6 +48,9 @@ struct process_info_private
   /* The PTID obtained from the last wait performed on this process.
      Initialized to null_ptid until the first wait is performed.  */
   ptid_t last_wait_event_ptid;
+
+  /* &_r_debug.  0 if not yet determined.  -1 if no PT_DYNAMIC in Phdrs.  */
+  CORE_ADDR r_debug;
 };
 
 /* Print a debug trace on standard output if debug_threads is set.  */
@@ -961,6 +966,536 @@ netbsd_supports_exec_events (void)
   return 1;
 }
 
+/* Extract &phdr and num_phdr in the inferior.  Return 0 on success.  */
+
+static int
+get_phdr_phnum_from_proc_auxv (const int pid, const int is_elf64,
+                               CORE_ADDR *phdr_memaddr, int *num_phdr)
+{
+  char filename[PATH_MAX];
+  int fd;
+  const int auxv_size = is_elf64
+    ? sizeof (Aux64Info) : sizeof (Aux32Info);
+  char buf[sizeof (Aux64Info)];  /* The larger of the two.  */
+
+  xsnprintf (filename, sizeof filename, "/proc/%d/auxv", pid);
+
+  fd = open (filename, O_RDONLY);
+  if (fd < 0)
+    return 1;
+
+  *phdr_memaddr = 0;
+  *num_phdr = 0;
+  while (read (fd, buf, auxv_size) == auxv_size
+         && (*phdr_memaddr == 0 || *num_phdr == 0))
+    {
+      if (is_elf64)
+        {
+          Aux64Info *const aux = (Aux64Info *) buf;
+
+          switch (aux->a_type)
+            {
+            case AT_PHDR:
+              *phdr_memaddr = aux->a_v;
+              break;
+            case AT_PHNUM:
+              *num_phdr = aux->a_v;
+              break;
+            }
+        }
+      else
+        {
+          Aux32Info *const aux = (Aux32Info *) buf;
+
+          switch (aux->a_type)
+            {
+            case AT_PHDR:
+              *phdr_memaddr = aux->a_v;
+              break;
+            case AT_PHNUM:
+              *num_phdr = aux->a_v;
+              break;
+            }
+        }
+    }
+
+  close (fd);
+
+  if (*phdr_memaddr == 0 || *num_phdr == 0)
+    {
+      warning ("Unexpected missing AT_PHDR and/or AT_PHNUM: "
+               "phdr_memaddr = %ld, phdr_num = %d",
+               (long) *phdr_memaddr, *num_phdr);
+      return 2;
+    }
+
+  return 0;
+}
+
+
+/* Return &_DYNAMIC (via PT_DYNAMIC) in the inferior, or 0 if not present.  */
+
+static CORE_ADDR
+get_dynamic (const int pid, const int is_elf64)
+{
+  CORE_ADDR phdr_memaddr, relocation;
+  int num_phdr, i;
+  unsigned char *phdr_buf;
+  const int phdr_size = is_elf64 ? sizeof (Elf64_Phdr) : sizeof (Elf32_Phdr);
+
+  if (get_phdr_phnum_from_proc_auxv (pid, is_elf64, &phdr_memaddr, &num_phdr))
+    return 0;
+
+  gdb_assert (num_phdr < 100);  /* Basic sanity check.  */
+  phdr_buf = (unsigned char *) alloca (num_phdr * phdr_size);
+
+  if (netbsd_read_memory (phdr_memaddr, phdr_buf, num_phdr * phdr_size))
+    return 0;
+
+  /* Compute relocation: it is expected to be 0 for "regular" executables,
+     non-zero for PIE ones.  */
+  relocation = -1;
+  for (i = 0; relocation == -1 && i < num_phdr; i++)
+    if (is_elf64)
+      {
+        Elf64_Phdr *const p = (Elf64_Phdr *) (phdr_buf + i * phdr_size);
+
+        if (p->p_type == PT_PHDR)
+          relocation = phdr_memaddr - p->p_vaddr;
+      }
+    else
+      {
+        Elf32_Phdr *const p = (Elf32_Phdr *) (phdr_buf + i * phdr_size);
+
+        if (p->p_type == PT_PHDR)
+          relocation = phdr_memaddr - p->p_vaddr;
+      }
+
+  if (relocation == -1)
+    {
+      /* PT_PHDR is optional, but necessary for PIE in general.  Fortunately
+         any real world executables, including PIE executables, have always
+         PT_PHDR present.  PT_PHDR is not present in some shared libraries or
+         in fpc (Free Pascal 2.4) binaries but neither of those have a need for
+         or present DT_DEBUG anyway (fpc binaries are statically linked).
+
+         Therefore if there exists DT_DEBUG there is always also PT_PHDR.
+
+         GDB could find RELOCATION also from AT_ENTRY - e_entry.  */
+
+      return 0;
+    }
+
+  for (i = 0; i < num_phdr; i++)
+    {
+      if (is_elf64)
+        {
+          Elf64_Phdr *const p = (Elf64_Phdr *) (phdr_buf + i * phdr_size);
+
+          if (p->p_type == PT_DYNAMIC)
+            return p->p_vaddr + relocation;
+        }
+      else
+        {
+          Elf32_Phdr *const p = (Elf32_Phdr *) (phdr_buf + i * phdr_size);
+
+          if (p->p_type == PT_DYNAMIC)
+            return p->p_vaddr + relocation;
+        }
+    }
+
+  return 0;
+}
+
+/* Return &_r_debug in the inferior, or -1 if not present.  Return value
+   can be 0 if the inferior does not yet have the library list initialized.
+   We look for DT_MIPS_RLD_MAP first.  MIPS executables use this instead of
+   DT_DEBUG, although they sometimes contain an unused DT_DEBUG entry too.  */
+
+static CORE_ADDR
+get_r_debug (const int pid, const int is_elf64)
+{
+  CORE_ADDR dynamic_memaddr;
+  const int dyn_size = is_elf64 ? sizeof (Elf64_Dyn) : sizeof (Elf32_Dyn);
+  unsigned char buf[sizeof (Elf64_Dyn)];  /* The larger of the two.  */
+  CORE_ADDR map = -1;
+
+  dynamic_memaddr = get_dynamic (pid, is_elf64);
+  if (dynamic_memaddr == 0)
+    return map;
+
+  while (netbsd_read_memory (dynamic_memaddr, buf, dyn_size) == 0)
+    {
+      if (is_elf64)
+        {
+          Elf64_Dyn *const dyn = (Elf64_Dyn *) buf;
+#if defined DT_MIPS_RLD_MAP || defined DT_MIPS_RLD_MAP_REL
+          union
+            {
+              Elf64_Xword map;
+              unsigned char buf[sizeof (Elf64_Xword)];
+            }
+          rld_map;
+#endif
+#ifdef DT_MIPS_RLD_MAP
+          if (dyn->d_tag == DT_MIPS_RLD_MAP)
+            {
+              if (netbsd_read_memory (dyn->d_un.d_val,
+                                     rld_map.buf, sizeof (rld_map.buf)) == 0)
+                return rld_map.map;
+              else
+                break;
+            }
+#endif  /* DT_MIPS_RLD_MAP */
+#ifdef DT_MIPS_RLD_MAP_REL
+          if (dyn->d_tag == DT_MIPS_RLD_MAP_REL)
+            {
+              if (netbsd_read_memory (dyn->d_un.d_val + dynamic_memaddr,
+                                     rld_map.buf, sizeof (rld_map.buf)) == 0)
+                return rld_map.map;
+              else
+                break;
+            }
+#endif  /* DT_MIPS_RLD_MAP_REL */
+
+          if (dyn->d_tag == DT_DEBUG && map == -1)
+            map = dyn->d_un.d_val;
+
+          if (dyn->d_tag == DT_NULL)
+            break;
+        }
+      else
+        {
+          Elf32_Dyn *const dyn = (Elf32_Dyn *) buf;
+#if defined DT_MIPS_RLD_MAP || defined DT_MIPS_RLD_MAP_REL
+          union
+            {
+              Elf32_Word map;
+              unsigned char buf[sizeof (Elf32_Word)];
+            }
+          rld_map;
+#endif
+#ifdef DT_MIPS_RLD_MAP
+          if (dyn->d_tag == DT_MIPS_RLD_MAP)
+            {
+              if (netbsd_read_memory (dyn->d_un.d_val,
+                                     rld_map.buf, sizeof (rld_map.buf)) == 0)
+                return rld_map.map;
+              else
+                break;
+            }
+#endif  /* DT_MIPS_RLD_MAP */
+#ifdef DT_MIPS_RLD_MAP_REL
+          if (dyn->d_tag == DT_MIPS_RLD_MAP_REL)
+            {
+              if (netbsd_read_memory (dyn->d_un.d_val + dynamic_memaddr,
+                                     rld_map.buf, sizeof (rld_map.buf)) == 0)
+                return rld_map.map;
+              else
+                break;
+            }
+#endif  /* DT_MIPS_RLD_MAP_REL */
+
+          if (dyn->d_tag == DT_DEBUG && map == -1)
+            map = dyn->d_un.d_val;
+
+          if (dyn->d_tag == DT_NULL)
+            break;
+        }
+
+      dynamic_memaddr += dyn_size;
+    }
+
+  return map;
+}
+
+/* Read one pointer from MEMADDR in the inferior.  */
+
+static int
+read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr, int ptr_size)
+{
+  int ret;
+
+  /* Go through a union so this works on either big or little endian
+     hosts, when the inferior's pointer size is smaller than the size
+     of CORE_ADDR.  It is assumed the inferior's endianness is the
+     same of the superior's.  */
+
+  union
+  {
+    CORE_ADDR core_addr;
+    unsigned int ui;
+    unsigned char uc;
+  } addr;
+
+  ret = netbsd_read_memory (memaddr, &addr.uc, ptr_size);
+  if (ret == 0)
+    {
+      if (ptr_size == sizeof (CORE_ADDR))
+        *ptr = addr.core_addr;
+      else if (ptr_size == sizeof (unsigned int))
+        *ptr = addr.ui;
+      else
+        gdb_assert_not_reached ("unhandled pointer size");
+    }
+  return ret;
+}
+
+struct link_map_offsets
+  {
+    /* Offset and size of r_debug.r_version.  */
+    int r_version_offset;
+
+    /* Offset and size of r_debug.r_map.  */
+    int r_map_offset;
+
+    /* Offset to l_addr field in struct link_map.  */
+    int l_addr_offset;
+
+    /* Offset to l_name field in struct link_map.  */
+    int l_name_offset;
+
+    /* Offset to l_ld field in struct link_map.  */
+    int l_ld_offset;
+
+    /* Offset to l_next field in struct link_map.  */
+    int l_next_offset;
+
+    /* Offset to l_prev field in struct link_map.  */
+    int l_prev_offset;
+  };
+
+/* Return non-zero if HEADER is a 64-bit ELF file.  */
+
+static int
+elf_64_header_p (const Elf64_Ehdr *header, unsigned int *machine)
+{
+  if (header->e_ident[EI_MAG0] == ELFMAG0
+      && header->e_ident[EI_MAG1] == ELFMAG1
+      && header->e_ident[EI_MAG2] == ELFMAG2
+      && header->e_ident[EI_MAG3] == ELFMAG3)
+    {
+      *machine = header->e_machine;
+      return header->e_ident[EI_CLASS] == ELFCLASS64;
+
+    }
+  *machine = EM_NONE;
+  return -1;
+}
+
+/* Return non-zero if FILE is a 64-bit ELF file,
+   zero if the file is not a 64-bit ELF file,
+   and -1 if the file is not accessible or doesn't exist.  */
+
+static int
+elf_64_file_p (const char *file, unsigned int *machine)
+{
+  Elf64_Ehdr header;
+  int fd;
+
+  fd = open (file, O_RDONLY);
+  if (fd < 0)
+    return -1;
+
+  if (read (fd, &header, sizeof (header)) != sizeof (header))
+    {
+      close (fd);
+      return 0;
+    }
+  close (fd);
+
+  return elf_64_header_p (&header, machine);
+}
+
+/* Construct qXfer:libraries-svr4:read reply.  */
+
+static int
+netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
+                            unsigned const char *writebuf,
+                            CORE_ADDR offset, int len)
+{
+  struct process_info_private *const priv = current_process ()->priv;
+  char filename[PATH_MAX];
+  int pid, is_elf64;
+
+  static const struct link_map_offsets lmo_32bit_offsets =
+    {
+      0,     /* r_version offset. */
+      4,     /* r_debug.r_map offset.  */
+      0,     /* l_addr offset in link_map.  */
+      4,     /* l_name offset in link_map.  */
+      8,     /* l_ld offset in link_map.  */
+      12,    /* l_next offset in link_map.  */
+      16     /* l_prev offset in link_map.  */
+    };
+
+  static const struct link_map_offsets lmo_64bit_offsets =
+    {
+      0,     /* r_version offset. */
+      8,     /* r_debug.r_map offset.  */
+      0,     /* l_addr offset in link_map.  */
+      8,     /* l_name offset in link_map.  */
+      16,    /* l_ld offset in link_map.  */
+      24,    /* l_next offset in link_map.  */
+      32     /* l_prev offset in link_map.  */
+    };
+  const struct link_map_offsets *lmo;
+  unsigned int machine;
+  int ptr_size;
+  CORE_ADDR lm_addr = 0, lm_prev = 0;
+  CORE_ADDR l_name, l_addr, l_ld, l_next, l_prev;
+  int header_done = 0;
+
+  if (writebuf != NULL)
+    return -2;
+  if (readbuf == NULL)
+    return -1;
+
+  pid = lwpid_of (current_thread);
+  xsnprintf (filename, sizeof filename, "/proc/%d/exe", pid);
+  is_elf64 = elf_64_file_p (filename, &machine);
+  lmo = is_elf64 ? &lmo_64bit_offsets : &lmo_32bit_offsets;
+  ptr_size = is_elf64 ? 8 : 4;
+
+  while (annex[0] != '\0')
+    {
+      const char *sep;
+      CORE_ADDR *addrp;
+      int name_len;
+
+      sep = strchr (annex, '=');
+      if (sep == NULL)
+        break;
+
+      name_len = sep - annex;
+      if (name_len == 5 && startswith (annex, "start"))
+        addrp = &lm_addr;
+      else if (name_len == 4 && startswith (annex, "prev"))
+        addrp = &lm_prev;
+      else
+        {
+          annex = strchr (sep, ';');
+          if (annex == NULL)
+            break;
+          annex++;
+          continue;
+        }
+
+      annex = decode_address_to_semicolon (addrp, sep + 1);
+    }
+
+  if (lm_addr == 0)
+    {
+      int r_version = 0;
+
+      if (priv->r_debug == 0)
+        priv->r_debug = get_r_debug (pid, is_elf64);
+
+      /* We failed to find DT_DEBUG.  Such situation will not change
+         for this inferior - do not retry it.  Report it to GDB as
+         E01, see for the reasons at the GDB solib-svr4.c side.  */
+      if (priv->r_debug == (CORE_ADDR) -1)
+        return -1;
+
+      if (priv->r_debug != 0)
+        {
+          if (netbsd_read_memory (priv->r_debug + lmo->r_version_offset,
+                                 (unsigned char *) &r_version,
+                                 sizeof (r_version)) != 0
+              || r_version != 1)
+            {
+              warning ("unexpected r_debug version %d", r_version);
+            }
+          else if (read_one_ptr (priv->r_debug + lmo->r_map_offset,
+                                 &lm_addr, ptr_size) != 0)
+            {
+              warning ("unable to read r_map from 0x%lx",
+                       (long) priv->r_debug + lmo->r_map_offset);
+            }
+        }
+    }
+
+  std::string document = "<library-list-svr4 version=\"1.0\"";
+
+  while (lm_addr
+         && read_one_ptr (lm_addr + lmo->l_name_offset,
+                          &l_name, ptr_size) == 0
+         && read_one_ptr (lm_addr + lmo->l_addr_offset,
+                          &l_addr, ptr_size) == 0
+         && read_one_ptr (lm_addr + lmo->l_ld_offset,
+                          &l_ld, ptr_size) == 0
+         && read_one_ptr (lm_addr + lmo->l_prev_offset,
+                          &l_prev, ptr_size) == 0
+         && read_one_ptr (lm_addr + lmo->l_next_offset,
+                          &l_next, ptr_size) == 0)
+    {
+      unsigned char libname[PATH_MAX];
+
+      if (lm_prev != l_prev)
+        {
+          warning ("Corrupted shared library list: 0x%lx != 0x%lx",
+                   (long) lm_prev, (long) l_prev);
+          break;
+        }
+
+      /* Ignore the first entry even if it has valid name as the first entry
+         corresponds to the main executable.  The first entry should not be
+         skipped if the dynamic loader was loaded late by a static executable
+         (see solib-svr4.c parameter ignore_first).  But in such case the main
+         executable does not have PT_DYNAMIC present and this function already
+         exited above due to failed get_r_debug.  */
+      if (lm_prev == 0)
+        string_appendf (document, " main-lm=\"0x%lx\"", (unsigned long) lm_addr);
+      else
+        {
+          /* Not checking for error because reading may stop before
+             we've got PATH_MAX worth of characters.  */
+          libname[0] = '\0';
+          netbsd_read_memory (l_name, libname, sizeof (libname) - 1);
+          libname[sizeof (libname) - 1] = '\0';
+          if (libname[0] != '\0')
+            {
+              if (!header_done)
+                {
+                  /* Terminate `<library-list-svr4'.  */
+                  document += '>';
+                  header_done = 1;
+                }
+
+              string_appendf (document, "<library name=\"");
+              xml_escape_text_append (&document, (char *) libname);
+              string_appendf (document, "\" lm=\"0x%lx\" "
+                              "l_addr=\"0x%lx\" l_ld=\"0x%lx\"/>",
+                              (unsigned long) lm_addr, (unsigned long) l_addr,
+                              (unsigned long) l_ld);
+            }
+        }
+
+      lm_prev = lm_addr;
+      lm_addr = l_next;
+    }
+
+  if (!header_done)
+    {
+      /* Empty list; terminate `<library-list-svr4'.  */
+      document += "/>";
+    }
+  else
+    document += "</library-list-svr4>";
+
+  int document_len = document.length ();
+  if (offset < document_len)
+    document_len -= offset;
+  else
+    document_len = 0;
+  if (len > document_len)
+    len = document_len;
+
+  memcpy (readbuf, document.data () + offset, len);
+
+  return len;
+}
+
 static int
 netbsd_supports_catch_syscall (void)
 {
@@ -1029,7 +1564,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* emit_ops */
   NULL,  /* supports_disable_randomization */
   NULL,  /* get_min_fast_tracepoint_insn_len */
-  NULL,  /* qxfer_libraries_svr4 */
+  netbsd_qxfer_libraries_svr4,
   NULL,  /* supports_agent */
   NULL,  /* enable_btrace */
   NULL,  /* disable_btrace */
