@@ -961,6 +961,12 @@ netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
   return pio.piod_len;
 }
 
+static int
+netbsd_supports_non_stop (void)
+{
+  return 0;
+}
+
 /* Check if fork events are supported.  */
 
 static int
@@ -983,6 +989,12 @@ static int
 netbsd_supports_exec_events (void)
 {
   return 1;
+}
+
+static int
+netbsd_supports_disable_randomization (void)
+{
+  return 0;
 }
 
 /* Extract &phdr and num_phdr in the inferior.  Return 0 on success.  */
@@ -1566,7 +1578,7 @@ static struct target_ops netbsd_target_ops = {
   hostio_last_error_from_errno,
   NULL,  /* qxfer_osdata */
   NULL,  /* qxfer_siginfo */
-  NULL,  /* supports_non_stop */
+  netbsd_supports_non_stop,
   NULL,  /* async */
   NULL,  /* start_non_stop */
   NULL,  /* supports_multi_process */
@@ -1588,7 +1600,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* stabilize_threads */
   NULL,  /* install_fast_tracepoint_jump_pad */
   NULL,  /* emit_ops */
-  NULL,  /* supports_disable_randomization */
+  netbsd_supports_disable_randomization,
   NULL,  /* get_min_fast_tracepoint_insn_len */
   netbsd_qxfer_libraries_svr4,
   NULL,  /* supports_agent */
