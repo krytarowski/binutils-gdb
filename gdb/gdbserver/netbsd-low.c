@@ -961,6 +961,12 @@ netbsd_supports_exec_events (void)
   return 1;
 }
 
+static int
+netbsd_supports_catch_syscall (void)
+{
+  return 1;
+}
+
 /* The NetBSD target_ops vector.  */
 
 static struct target_ops netbsd_target_ops = {
@@ -1039,7 +1045,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* thread_name */
   NULL,  /* breakpoint_kind_from_current_state */
   NULL,  /* supports_software_single_step */
-  NULL,  /* supports_catch_syscall */
+  netbsd_supports_catch_syscall,  /* supports_catch_syscall */
   NULL,  /* get_ipa_tdesc_idx */
   NULL,  /* thread_handle */
 };
