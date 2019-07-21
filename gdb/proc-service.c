@@ -75,6 +75,7 @@ ps_xfer_memory (const struct ps_prochandle *ph, psaddr_t addr,
   CORE_ADDR core_addr = ps_addr_to_core_addr (addr);
 
   inferior_ptid = ph->thread->ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   if (write)
     ret = target_write_memory (core_addr, buf, len);

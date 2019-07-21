@@ -657,6 +657,7 @@ gdbsim_target::create_inferior (const char *exec_file,
     error (_("Unable to create sim inferior."));
 
   inferior_ptid = sim_data->remote_sim_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
   inferior_appeared (current_inferior (), inferior_ptid.pid ());
   add_thread_silent (inferior_ptid);
 
@@ -765,6 +766,7 @@ gdbsim_target_open (const char *args, int from_tty)
   /* There's nothing running after "target sim" or "load"; not until
      "run".  */
   inferior_ptid = null_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   gdbsim_is_open = 1;
 }
@@ -976,6 +978,7 @@ gdbsim_target::wait (ptid_t ptid, struct target_waitstatus *status, int options)
 	error (_("Unable to wait for pid %d.  Inferior not found."),
 	       ptid.pid ());
       inferior_ptid = ptid;
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
     }
 
   if (remote_debug)

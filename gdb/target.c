@@ -3190,6 +3190,7 @@ generic_mourn_inferior (void)
   inferior *inf = current_inferior ();
 
   inferior_ptid = null_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   /* Mark breakpoints uninserted in case something tries to delete a
      breakpoint while we delete the inferior's threads (which would

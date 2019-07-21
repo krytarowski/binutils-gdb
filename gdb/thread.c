@@ -1278,6 +1278,8 @@ switch_to_thread_no_regs (struct thread_info *thread)
   set_current_inferior (inf);
 
   inferior_ptid = thread->ptid;
+
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 }
 
 /* See gdbthread.h.  */

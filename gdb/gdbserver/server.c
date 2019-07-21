@@ -309,6 +309,7 @@ attach_inferior (int pid)
   if (!non_stop)
     {
       cs.last_ptid = mywait (ptid_t (pid), &cs.last_status, 0, 0);
+      debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
 
       /* GDB knows to ignore the first SIGSTOP after attaching to a running
 	 process using the "attach" command, but this is different; it's
@@ -1271,6 +1272,7 @@ handle_detach (char *own_buf)
 	  cs.last_status.kind = TARGET_WAITKIND_EXITED;
 	  cs.last_status.value.integer = 0;
 	  cs.last_ptid = ptid_t (pid);
+          debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
 
 	  current_thread = NULL;
 	}
@@ -2730,6 +2732,7 @@ handle_pending_status (const struct thread_resume *resumption,
 
       cs.last_status = thread->last_status;
       cs.last_ptid = thread->id;
+      debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
       prepare_resume_reply (cs.own_buf, cs.last_ptid, &cs.last_status);
       return 1;
     }
@@ -2877,6 +2880,7 @@ resume (struct thread_resume *actions, size_t num_actions)
   else
     {
       cs.last_ptid = mywait (minus_one_ptid, &cs.last_status, 0, 1);
+      debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
 
       if (cs.last_status.kind == TARGET_WAITKIND_NO_RESUMED
 	  && !report_no_resumed)
@@ -3091,6 +3095,7 @@ handle_v_kill (char *own_buf)
       cs.last_status.kind = TARGET_WAITKIND_SIGNALLED;
       cs.last_status.value.sig = GDB_SIGNAL_KILL;
       cs.last_ptid = ptid_t (pid);
+      debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
       discard_queued_stop_replies (cs.last_ptid);
       write_ok (own_buf);
       return 1;
@@ -3826,6 +3831,7 @@ captured_main (int argc, char *argv[])
       cs.last_status.kind = TARGET_WAITKIND_EXITED;
       cs.last_status.value.integer = 0;
       cs.last_ptid = minus_one_ptid;
+      debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
     }
 
   SCOPE_EXIT { detach_or_kill_for_exit_cleanup (); };
@@ -4425,6 +4431,7 @@ handle_target_event (int err, gdb_client_data client_data)
 
   cs.last_ptid = mywait (minus_one_ptid, &cs.last_status,
 		      TARGET_WNOHANG, 1);
+  debug_printf("%s() %s:%d last_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, cs.last_ptid.pid(), cs.last_ptid.lwp(), cs.last_ptid.tid());
 
   if (cs.last_status.kind == TARGET_WAITKIND_NO_RESUMED)
     {

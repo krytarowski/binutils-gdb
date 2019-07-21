@@ -2461,6 +2461,7 @@ remote_target::remote_notice_new_inferior (ptid_t currthread, int executing)
 	    {
 	      remote_add_thread (currthread, running, executing);
 	      inferior_ptid = currthread;
+              printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 	    }
 	  return;
 	}
@@ -4015,6 +4016,7 @@ remote_target::close ()
      Reset inferior_ptid to null_ptid first, as otherwise has_stack_frame
      will be unable to find the thread corresponding to (pid, 0, 0).  */
   inferior_ptid = null_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
   discard_all_inferiors ();
 
   trace_reset_local_state ();
@@ -4302,6 +4304,7 @@ remote_target::add_current_inferior_and_thread (char *wait_status)
   bool fake_pid_p = false;
 
   inferior_ptid = null_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   /* Now, if we have thread information, update inferior_ptid.  */
   ptid_t curr_ptid = get_current_thread (wait_status);
@@ -4690,6 +4693,7 @@ remote_target::start_remote (int from_tty, int extended_p)
 	     multi-threaded program, this will ideally be the thread
 	     that last reported an event before GDB disconnected.  */
 	  inferior_ptid = get_current_thread (wait_status);
+          printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 	  if (inferior_ptid == null_ptid)
 	    {
 	      /* Odd... The target was able to list threads, but not
@@ -4703,6 +4707,7 @@ remote_target::start_remote (int from_tty, int extended_p)
 				    "current thread; picking first in list.\n");
 
 	      inferior_ptid = inferior_list->thread_list->ptid;
+              printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 	    }
 	}
 
@@ -5691,6 +5696,7 @@ remote_target::remote_detach_1 (inferior *inf, int from_tty)
   else
     {
       inferior_ptid = null_ptid;
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
       detach_inferior (current_inferior ());
     }
 }
@@ -5838,6 +5844,7 @@ extended_remote_target::attach (const char *args, int from_tty)
   set_current_inferior (remote_add_inferior (false, pid, 1, 0));
 
   inferior_ptid = ptid_t (pid);
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   if (target_is_non_stop_p ())
     {
@@ -5851,6 +5858,7 @@ extended_remote_target::attach (const char *args, int from_tty)
 	inferior_ptid = thread->ptid;
       else
 	inferior_ptid = ptid_t (pid);
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
       /* Invalidate our notion of the remote current thread.  */
       record_currthread (rs, minus_one_ptid);
@@ -5859,6 +5867,7 @@ extended_remote_target::attach (const char *args, int from_tty)
     {
       /* Now, if we have thread information, update inferior_ptid.  */
       inferior_ptid = remote_current_thread (inferior_ptid);
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
       /* Add the main thread to the thread list.  */
       thread_info *thr = add_thread_silent (inferior_ptid);
@@ -9860,6 +9869,7 @@ remote_target::mourn_inferior ()
 		 there's something here, e.g., so that the user can
 		 say "kill" again.  */
 	      inferior_ptid = magic_null_ptid;
+              printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 	    }
 	}
     }

@@ -490,6 +490,7 @@ holding the child stopped.  Try \"set detach-on-fork\" or \
 	  scoped_restore_current_pspace_and_thread restore_pspace_thread;
 
 	  inferior_ptid = child_ptid;
+          printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 	  add_thread_silent (inferior_ptid);
 	  set_current_inferior (child_inf);
 	  child_inf->symfile_flags = SYMFILE_NO_READ;
@@ -620,6 +621,7 @@ holding the child stopped.  Try \"set detach-on-fork\" or \
 	 informing the solib layer about this new process.  */
 
       inferior_ptid = child_ptid;
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
       add_thread_silent (inferior_ptid);
       set_current_inferior (child_inf);
 
@@ -1816,6 +1818,7 @@ write_memory_ptid (ptid_t ptid, CORE_ADDR memaddr,
   scoped_restore save_inferior_ptid = make_scoped_restore (&inferior_ptid);
 
   inferior_ptid = ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
   write_memory (memaddr, myaddr, len);
 }
 
@@ -2048,8 +2051,10 @@ start_step_over (void)
 static void
 infrun_thread_ptid_changed (ptid_t old_ptid, ptid_t new_ptid)
 {
-  if (inferior_ptid == old_ptid)
+  if (inferior_ptid == old_ptid) {
     inferior_ptid = new_ptid;
+    printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
+  }
 }
 
 
@@ -2856,6 +2861,7 @@ proceed (CORE_ADDR addr, enum gdb_signal siggnal)
 
   /* We'll update this if & when we switch to a new thread.  */
   previous_inferior_ptid = inferior_ptid;
+  
 
   regcache = get_current_regcache ();
   gdbarch = regcache->arch ();
@@ -4180,6 +4186,7 @@ thread_stopped_by_ ## REASON (ptid_t ptid)	\
 {						\
   scoped_restore save_inferior_ptid = make_scoped_restore (&inferior_ptid); \
   inferior_ptid = ptid;				\
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid()); \
 						\
   return target_stopped_by_ ## REASON ();	\
 }
@@ -4822,6 +4829,7 @@ handle_inferior_event (struct execution_control_state *ecs)
     case TARGET_WAITKIND_EXITED:
     case TARGET_WAITKIND_SIGNALLED:
       inferior_ptid = ecs->ptid;
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
       set_current_inferior (find_inferior_ptid (ecs->ptid));
       set_current_program_space (current_inferior ()->pspace);
       handle_vfork_child_exec_or_exit (0);
@@ -5420,6 +5428,7 @@ handle_signal_stop (struct execution_control_state *ecs)
       scoped_restore save_inferior_ptid = make_scoped_restore (&inferior_ptid);
 
       inferior_ptid = ecs->ptid;
+      printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
       fprintf_unfiltered (gdb_stdlog, "infrun: stop_pc = %s\n",
 			  paddress (reg_gdbarch,
@@ -9156,6 +9165,8 @@ enabled by default on some platforms."),
 
   /* ptid initializations */
   inferior_ptid = null_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
+
   target_last_wait_ptid = minus_one_ptid;
 
   gdb::observers::thread_ptid_changed.attach (infrun_thread_ptid_changed);

@@ -233,6 +233,7 @@ inf_ptrace_target::attach (const char *args, int from_tty)
   inferior_appeared (inf, pid);
   inf->attach_flag = 1;
   inferior_ptid = ptid_t (pid);
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   /* Always add a main thread.  If some target extends the ptrace
      target, it should decorate the ptid later with more info.  */
@@ -292,6 +293,7 @@ void
 inf_ptrace_target::detach_success (inferior *inf)
 {
   inferior_ptid = null_ptid;
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
   detach_inferior (inf);
 
   maybe_unpush_target ();

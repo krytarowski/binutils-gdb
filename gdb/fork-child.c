@@ -84,6 +84,7 @@ postfork_hook (pid_t pid)
 
   /* Needed for wait_for_inferior stuff.  */
   inferior_ptid = ptid_t (pid);
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
 
   gdb_assert (saved_ui != NULL);
   current_ui = saved_ui;

@@ -1169,6 +1169,7 @@ ctf_target_open (const char *dirname, int from_tty)
 
   inferior_appeared (current_inferior (), CTF_PID);
   inferior_ptid = ptid_t (CTF_PID);
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
   add_thread_silent (inferior_ptid);
 
   merge_uploaded_trace_state_variables (&uploaded_tsvs);
@@ -1188,6 +1189,7 @@ ctf_target::close ()
   trace_dirname = NULL;
 
   inferior_ptid = null_ptid;	/* Avoid confusion from thread stuff.  */
+  printf("%s() %s:%d inferior_ptid=(%d, %ld, %ld)\n", __func__, __FILE__, __LINE__, inferior_ptid.pid(), inferior_ptid.lwp(), inferior_ptid.tid());
   exit_inferior_silent (current_inferior ());
 
   trace_reset_local_state ();
