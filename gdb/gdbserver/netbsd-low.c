@@ -203,7 +203,7 @@ static const char *
 netbsd_wait_kind_to_str (int kind)
 {
 #define CASE(X) case X: return #X
-  switch (request)
+  switch (kind)
     {
       CASE(TARGET_WAITKIND_EXITED);
       CASE(TARGET_WAITKIND_STOPPED);
@@ -983,7 +983,8 @@ netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
   pio.piod_addr = myaddr;
   pio.piod_len = len;
 
-  netbsd_ptrace (PT_IO, pid, &pio, 0);
+  if (netbsd_ptrace (PT_IO, pid, &pio, 0) == -1)
+    return 0;
 
   return pio.piod_len;
 }
