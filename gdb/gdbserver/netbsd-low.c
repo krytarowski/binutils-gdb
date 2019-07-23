@@ -1471,7 +1471,6 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
                             CORE_ADDR offset, int len)
 {
   struct process_info_private *const priv = current_process ()->priv;
-  char filename[PATH_MAX];
   int pid, is_elf64;
 
   static const struct link_map_offsets lmo_32bit_offsets =
@@ -1508,8 +1507,7 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
     return -1;
 
   pid = pid_of (current_thread);
-  xsnprintf (filename, sizeof filename, "/proc/%d/exe", pid);
-  is_elf64 = elf_64_file_p (filename, &machine);
+  is_elf64 = elf_64_file_p (pid_to_exec_file(pid), &machine);
   lmo = is_elf64 ? &lmo_64bit_offsets : &lmo_32bit_offsets;
   ptr_size = is_elf64 ? 8 : 4;
 
