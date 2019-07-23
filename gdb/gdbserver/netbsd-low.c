@@ -75,11 +75,6 @@ netbsd_debug (const char *string, ...)
 static ptid_t
 netbsd_ptid_t (pid_t pid, lwpid_t tid)
 {
-  /* brobecker/2010-06-21: It looks like the LWP field in ptids
-     should be distinct for each thread (see write_ptid where it
-     writes the thread ID from the LWP).  So instead of storing
-     the NetBSD tid in the tid field of the ptid, we store it in
-     the lwp field.  */
   return ptid_t (pid, tid, 0);
 }
 
