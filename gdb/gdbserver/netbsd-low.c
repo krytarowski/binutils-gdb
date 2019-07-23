@@ -64,9 +64,8 @@ netbsd_debug (const char *string, ...)
     return;
 
   va_start (args, string);
-  fprintf (stderr, "DEBUG(netbsd): ");
+  fprintf (stderr, "[pid=%d] DEBUG(netbsd): ", getpid());
   vfprintf (stderr, string, args);
-  fprintf (stderr, "\n");
   va_end (args);
 }
 
@@ -195,13 +194,40 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   int result;
   int saved_errno;
 
-  netbsd_debug ("[%d] PTRACE (%s, pid=%d, addr=%p, "
-             "data=%#x)", getpid(),
-             ptrace_request_to_str (request), pid,
-             addr, data);
+  netbsd_debug ("PTRACE (%s, pid=%d, addr=%p, data=%#x)\n",
+              ptrace_request_to_str (request), pid, addr, data);
+
   saved_errno = errno;
   errno = 0;
   result = ptrace (request, pid, addr, data);
+
+  netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
+
+  errno = saved_errno;
+  return result;
+}
+
+/* A wrapper around ptrace that allows us to print debug traces of
+   ptrace calls if debug traces are activated.  */
+
+static int
+netbsd_sysctl (const int *name, u_int namelen, void *oldp, size_t *oldlenp,
+  const void *newp, size_t newlen)
+{
+  int result;
+
+  gdb_assert(name);
+  gdb_assert(namelen > 0);
+
+  std::string str = "[" + std::to_string(name[0]);
+  for (u_int i = 1; i < namelen; i++)
+    str += ", " + std::to_string(name[i]);
+  str += "]";
+
+  netbsd_debug ("SYSCTL (name=%s, namelen=%u, oldp=%p, oldlenp=%p, newp=%p, "
+                "newlen=%zu)\n",
+                str.str(), namelen, oldp, oldlenp, newp, newlen);
+  result = sysctl();
 
   netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
 
@@ -271,7 +297,7 @@ netbsd_add_threads_sysctl (pid_t pid)
   mib[3] = sizeof(struct kinfo_lwp);
   mib[4] = 0;
 
-  if (sysctl(mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+  if (sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
     trace_start_error_with_name ("sysctl");
 
   mib[4] = size / sizeof(size_t);
@@ -303,7 +329,8 @@ netbsd_create_inferior (const char *program,
   pid_t pid;
   std::string str_program_args = stringify_argv (program_args);
 
-  netbsd_debug ("netbsd_create_inferior ()");
+  netbsd_debug ("%s(program='%s', args=%s)\n",
+                __func__, program, str_program_args.str());
 
   pid = fork_inferior (program,
 		       str_program_args.c_str (),
@@ -326,16 +353,16 @@ static void
 netbsd_add_threads_after_attach (pid_t pid)
 {
   struct ptrace_lwpinfo pl;
-  int val;
+
   pl.pl_lwpid = 0;
-  while ((val = netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl))) != -1 &&
+  while (netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
     pl.pl_lwpid != 0)
     {
       ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
 
       if (!find_thread_ptid (thread_ptid))
 	{
-	  netbsd_debug ("New thread: (pid = %d, tid = %d)",
+	  netbsd_debug ("New thread: (pid = %d, tid = %d)\n",
 		      pid, pl.pl_lwpid);
 	  add_thread (thread_ptid, NULL);
 	}
@@ -347,6 +374,8 @@ netbsd_add_threads_after_attach (pid_t pid)
 static int
 netbsd_attach (unsigned long pid)
 {
+
+  netbsd_debug ("%s(pid=%d)\n", __func__, pid);
 
   if (netbsd_ptrace (PT_ATTACH, pid, NULL, 0) != 0)
     error ("Cannot attach to process %lu: %s (%d)\n", pid,
@@ -379,6 +408,9 @@ netbsd_continue (ptid_t ptid)
 static void
 netbsd_resume (struct thread_resume *resume_info, size_t n)
 {
+
+  netbsd_debug ("%s()\n", __func__);
+
   ptid_t ptid = resume_info[0].thread;
   const int signal = resume_info[0].sig;
 
@@ -705,10 +737,10 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
 {
   ptid_t new_ptid;
 
-  netbsd_debug ("netbsd_wait (pid = %d, %s)",
+  netbsd_debug ("%s (pid = %d, %s)\n", __func__,
                 ptid.pid(), options & TARGET_WNOHANG ? "WNOHANG" : "" );
   new_ptid = netbsd_wait_1 (ptid, status, options);
-  netbsd_debug ("          -> (pid=%d, status->kind = %s)",
+  netbsd_debug ("          -> (pid=%d, status->kind = %s)\n",
 	        new_ptid.pid(), netbsd_wait_kind_to_str(status->kind));
   return new_ptid;
 }
@@ -718,6 +750,8 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
 static int
 netbsd_kill (process_info *process)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   pid_t pid = process->pid;
   ptid_t ptid = netbsd_ptid_t (pid, 0);
   struct target_waitstatus status;
@@ -733,6 +767,8 @@ netbsd_kill (process_info *process)
 static int
 netbsd_detach (process_info *process)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   pid_t pid = process->pid;
 
   netbsd_ptrace (PT_DETACH, pid, (void *)1, 0);
@@ -745,6 +781,8 @@ netbsd_detach (process_info *process)
 static void
 netbsd_mourn (struct process_info *proc)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   for_each_thread (proc->pid, remove_thread);
 
   /* Free our private data.  */
@@ -759,6 +797,8 @@ netbsd_mourn (struct process_info *proc)
 static void
 netbsd_join (int pid)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   /* The PTRACE_DETACH is sufficient to detach from the process.
      So no need to do anything extra.  */
 }
@@ -768,6 +808,8 @@ netbsd_join (int pid)
 static int
 netbsd_thread_alive (ptid_t ptid)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   /* The list of threads is updated at the end of each wait, so it
      should be up to date.  No need to re-fetch it.  */
   return (find_thread_ptid (ptid) != NULL);
@@ -778,10 +820,10 @@ netbsd_thread_alive (ptid_t ptid)
 static void
 netbsd_fetch_registers (struct regcache *regcache, int regno)
 {
+  netbsd_debug ("%s(regno=%d)\n", __func__, regno);
+
   struct netbsd_regset_info *regset = netbsd_target_regsets;
   ptid_t inferior_ptid = ptid_of (current_thread);
-
-  netbsd_debug ("netbsd_fetch_registers (regno = %d)", regno);
 
   while (regset->size >= 0)
     {
@@ -803,10 +845,10 @@ netbsd_fetch_registers (struct regcache *regcache, int regno)
 static void
 netbsd_store_registers (struct regcache *regcache, int regno)
 {
+  netbsd_debug ("%s(regno=%d)\n", __func__, regno);
+
   struct netbsd_regset_info *regset = netbsd_target_regsets;
   ptid_t inferior_ptid = ptid_of (current_thread);
-
-  netbsd_debug ("netbsd_store_registers (regno = %d)", regno);
 
   while (regset->size >= 0)
     {
@@ -834,6 +876,9 @@ netbsd_store_registers (struct regcache *regcache, int regno)
 static int
 netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 {
+  netbsd_debug ("%s(memaddr=%p, myaddr=%, size=%d)\n",
+                __func__, memaddr, myaddr, size);
+
   struct ptrace_io_desc io;
   io.piod_op = PIOD_READ_D;
   io.piod_len = size;
@@ -847,7 +892,6 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
       /* Zero length write always succeeds.  */
       return 0;
     }
-
   do
     {
       io.piod_offs = (void *)(memaddr + bytes_read);
@@ -872,6 +916,9 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 static int
 netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int size)
 {
+  netbsd_debug ("%s(memaddr=%p, myaddr=%, size=%d)\n",
+                __func__, memaddr, myaddr, size);
+
   struct ptrace_io_desc io;
   io.piod_op = PIOD_WRITE_D;
   io.piod_len = size;
@@ -910,6 +957,8 @@ netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int size)
 static void
 netbsd_request_interrupt (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   ptid_t inferior_ptid = ptid_of (get_first_thread ());
 
   kill (inferior_ptid.pid(), SIGINT);
@@ -921,6 +970,9 @@ netbsd_request_interrupt (void)
 static int
 netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
 {
+  netbsd_debug ("%s(offset=%p, myaddr=%, size=%u)\n",
+                __func__, offset, myaddr, size);
+
   struct ptrace_io_desc pio;
   pid_t pid = pid_of (current_thread);
 
@@ -938,6 +990,8 @@ netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
 static int
 netbsd_supports_z_point_type (char z_type)
 {
+  netbsd_debug ("%s(z_type='%c')\n", __func__, z_type);
+
   switch (z_type)
     {
     case Z_PACKET_SW_BP:
@@ -981,6 +1035,7 @@ netbsd_remove_point (enum raw_bkpt_type type, CORE_ADDR addr,
                      int size, struct raw_breakpoint *bp)
 {
   netbsd_debug ("%s type:%c addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
+
   switch (type)
     {
     case raw_bkpt_type_sw:
@@ -1000,6 +1055,8 @@ netbsd_remove_point (enum raw_bkpt_type type, CORE_ADDR addr,
 static int
 netbsd_stopped_by_sw_breakpoint (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   ptrace_siginfo_t psi;
   pid_t pid = pid_of (current_thread);
 
@@ -1016,18 +1073,24 @@ netbsd_stopped_by_sw_breakpoint (void)
 static int
 netbsd_supports_stopped_by_sw_breakpoint (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 1;
 }
 
 static int
 netbsd_supports_non_stop (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 0;
 }
 
 static int
 netbsd_supports_multi_process (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 0; /* XXX */
 }
 
@@ -1036,6 +1099,8 @@ netbsd_supports_multi_process (void)
 static int
 netbsd_supports_fork_events (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 1;
 }
 
@@ -1044,6 +1109,8 @@ netbsd_supports_fork_events (void)
 static int
 netbsd_supports_vfork_events (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 1;
 }
 
@@ -1052,12 +1119,16 @@ netbsd_supports_vfork_events (void)
 static int
 netbsd_supports_exec_events (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 1;
 }
 
 static int
 netbsd_supports_disable_randomization (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 0;
 }
 
@@ -1133,7 +1204,6 @@ get_phdr_phnum_from_proc_auxv (const int pid, const int is_elf64,
 
   return 0;
 }
-
 
 /* Return &_DYNAMIC (via PT_DYNAMIC) in the inferior, or 0 if not present.  */
 
@@ -1416,6 +1486,9 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
                             unsigned const char *writebuf,
                             CORE_ADDR offset, int len)
 {
+  netbsd_debug ("%s(annex=%s, readbuf=%p, writebuf=%p, offset=%p, len=%d)\n",
+                __func__, annex, readbuf, writebuf, offset, len);
+
   struct process_info_private *const priv = current_process ()->priv;
   int pid, is_elf64;
 
@@ -1602,6 +1675,8 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
 static char *
 netbsd_pid_to_exec_file (pid_t pid)
 {
+  netbsd_debug ("%s(pid=%d)\n", __func__, pid);
+
   return pid_to_exec_file(pid);
 }
 
@@ -1611,6 +1686,8 @@ netbsd_pid_to_exec_file (pid_t pid)
 static const gdb_byte *
 netbsd_sw_breakpoint_from_kind (int kind, int *size)
 {
+  netbsd_debug ("%s(kind=%d)\n", __func__, kind);
+
   static gdb_byte brkpt[PTRACE_BREAKPOINT_SIZE];
 
   *size = PTRACE_BREAKPOINT_SIZE;
@@ -1623,6 +1700,9 @@ netbsd_sw_breakpoint_from_kind (int kind, int *size)
 const char *
 netbsd_thread_name (ptid_t ptid)
 {
+  netbsd_debug ("%s(ptid=(%d, %d, %d))\n",
+                __func__, ptid.pid(), ptid.lwp(), ptid.tid());
+
   struct kinfo_lwp *kl;
   pid_t pid = ptid.pid ();
   lwpid_t lwp = ptid.lwp ();
@@ -1665,6 +1745,8 @@ netbsd_thread_name (ptid_t ptid)
 static int
 netbsd_supports_catch_syscall (void)
 {
+  netbsd_debug ("%s()\n", __func__);
+
   return 1;
 }
 
