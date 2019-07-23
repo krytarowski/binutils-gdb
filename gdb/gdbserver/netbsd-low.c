@@ -1671,6 +1671,48 @@ netbsd_sw_breakpoint_from_kind (int kind, int *size)
   return brkpt;
 }
 
+const char *
+netbsd_thread_name (ptid_t ptid)
+{
+  struct kinfo_lwp *kl;
+  pid_t pid = ptid.pid ();
+  lwpid_t lwp = ptid.lwp ();
+  static char buf[KI_LNAMELEN];
+  int mib[5];
+  size_t i, nlwps;
+  size_t size;
+
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_LWP;
+  mib[2] = pid;
+  mib[3] = sizeof(struct kinfo_lwp);
+  mib[4] = 0;
+
+  if (sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+    perror_with_name (("sysctl"));
+
+  mib[4] = size / sizeof(size_t);
+
+  kl = (struct kinfo_lwp *) xmalloc (size);
+  if (kl == NULL)
+    perror_with_name (("malloc"));
+
+  if (sysctl(mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
+    perror_with_name (("sysctl"));
+
+  nlwps = size / sizeof(struct kinfo_lwp);
+  buf[0] = '\0';
+  for (i = 0; i < nlwps; i++) {
+    if (kl[i].l_lid == lwp) {
+      xsnprintf (buf, sizeof buf, "%s", kl[i].l_name);
+      break;
+    }
+  }
+  xfree(kl);
+
+  return buf;
+}
+
 static int
 netbsd_supports_catch_syscall (void)
 {
@@ -1752,7 +1794,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* multifs_readlink */
   NULL,  /* breakpoint_kind_from_pc */
   netbsd_sw_breakpoint_from_kind,
-  NULL,  /* thread_name */
+  netbsd_thread_name,
   NULL,  /* breakpoint_kind_from_current_state */
   NULL,  /* supports_software_single_step */
   netbsd_supports_catch_syscall,
