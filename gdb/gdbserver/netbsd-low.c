@@ -235,9 +235,6 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   int result;
   int saved_errno;
 
-  if (pid == 1)
-    __builtin_trap();
-
   netbsd_debug ("[%d] PTRACE (%s, pid=%d, addr=%p, "
              "data=%#x)", getpid(),
              ptrace_request_to_str (request), pid,
