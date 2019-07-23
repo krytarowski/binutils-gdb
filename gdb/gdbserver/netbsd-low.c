@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2019 Free Software Foundation, Inc.
+/* Copyright (C) 2019 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -592,20 +592,11 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
         case SIGTRAP:
           switch (psi.psi_siginfo.si_code)
             {
-#if 0
             case TRAP_BRKPT:
-//            lp->stop_reason = TARGET_STOPPED_BY_SW_BREAKPOINT;
-              break;
             case TRAP_DBREG:
-//            if (hardware_breakpoint_inserted_here_p (get_regcache_aspace (regcache), pc))
-//              lp->stop_reason = TARGET_STOPPED_BY_HW_BREAKPOINT;
-//            else
-//              lp->stop_reason = TARGET_STOPPED_BY_WATCHPOINT;
-              break;
             case TRAP_TRACE:
-//            lp->stop_reason = TARGET_STOPPED_BY_SINGLE_STEP;
+              /* These stop reasons return STOPPED and are distinguished later */
               break;
-#endif
             case TRAP_SCE:
               ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
               ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
