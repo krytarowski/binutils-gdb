@@ -199,6 +199,33 @@ ptrace_request_to_str (int request)
   return "<unknown-request>";
 }
 
+static const char *
+netbsd_wait_kind_to_str (int kind)
+{
+#define CASE(X) case X: return #X
+  switch (request)
+    {
+      CASE(TARGET_WAITKIND_EXITED);
+      CASE(TARGET_WAITKIND_STOPPED);
+      CASE(TARGET_WAITKIND_SIGNALLED);
+      CASE(TARGET_WAITKIND_LOADED);
+      CASE(TARGET_WAITKIND_FORKED);
+      CASE(TARGET_WAITKIND_VFORKED);
+      CASE(TARGET_WAITKIND_EXECD);
+      CASE(TARGET_WAITKIND_VFORK_DONE);
+      CASE(TARGET_WAITKIND_SYSCALL_ENTRY);
+      CASE(TARGET_WAITKIND_SYSCALL_RETURN);
+      CASE(TARGET_WAITKIND_IGNORE);
+      CASE(TARGET_WAITKIND_NO_HISTORY);
+      CASE(TARGET_WAITKIND_NO_RESUMED);
+      CASE(TARGET_WAITKIND_THREAD_CREATED);
+      CASE(TARGET_WAITKIND_THREAD_EXITED);
+    }
+#undef CASE
+
+  return "<unknown-request>";
+}
+
 /* A wrapper around ptrace that allows us to print debug traces of
    ptrace calls if debug traces are activated.  */
 
@@ -734,9 +761,9 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
               netbsd_ptid_get_pid (ptid),
               options & TARGET_WNOHANG ? "WNOHANG" : "" );
   new_ptid = netbsd_wait_1 (ptid, status, options);
-  netbsd_debug ("          -> (pid=%d, status->kind = %d)",
+  netbsd_debug ("          -> (pid=%d, status->kind = %s)",
 	      netbsd_ptid_get_pid (new_ptid),
-	      status->kind);
+	      netbsd_wait_kind_to_str(status->kind));
   return new_ptid;
 }
 
