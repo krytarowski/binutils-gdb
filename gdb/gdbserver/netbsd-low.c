@@ -1020,6 +1020,30 @@ netbsd_remove_point (enum raw_bkpt_type type, CORE_ADDR addr,
     }
 }
 
+/* Implement the to_stopped_by_sw_breakpoint target_ops
+   method.  */
+
+static int
+netbsd_stopped_by_sw_breakpoint (void)
+{
+  ptrace_siginfo_t psi;
+  pid_t pid = lwpid_of (current_thread);
+
+  netbsd_ptrace (PT_GET_SIGINFO, pid, &psi, sizeof(psi));
+
+  return psi.psi_siginfo.si_signo == SIGTRAP &&
+         psi.psi_siginfo.si_code == TRAP_TRACE;
+}
+
+/* Implement the to_supports_stopped_by_sw_breakpoint target_ops
+   method.  */
+
+static int
+netbsd_supports_stopped_by_sw_breakpoint (void)
+{
+  return 1;
+}
+
 static int
 netbsd_supports_non_stop (void)
 {
@@ -1630,8 +1654,8 @@ static struct target_ops netbsd_target_ops = {
   netbsd_supports_z_point_type,
   netbsd_insert_point,
   netbsd_remove_point,
-  NULL,  /* stopped_by_sw_breakpoint */
-  NULL,  /* supports_stopped_by_sw_breakpoint */
+  netbsd_stopped_by_sw_breakpoint,
+  netbsd_supports_stopped_by_sw_breakpoint,
   NULL,  /* stopped_by_hw_breakpoint */
   NULL,  /* supports_stopped_by_hw_breakpoint */
   target_can_do_hardware_single_step,
