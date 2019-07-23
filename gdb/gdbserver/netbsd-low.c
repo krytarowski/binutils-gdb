@@ -498,9 +498,6 @@ netbsd_waitpid (int pid, int *stat_loc, int options)
   return ret;
 }
 
-/* Return the name of a file that can be opened to get the symbols for
-   the child process identified by PID.  */
-
 static char *
 pid_to_exec_file (pid_t pid)
 {
@@ -1650,6 +1647,16 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
   return len;
 }
 
+/* Return the name of a file that can be opened to get the symbols for
+   the child process identified by PID.  */
+
+static char *
+netbsd_pid_to_exec_file (pid_t pid)
+{
+  return pid_to_exec_file(pid);
+}
+
+
 /* Implementation of the target_ops method "sw_breakpoint_from_kind".  */
 
 static const gdb_byte *
@@ -1739,7 +1746,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* read_btrace */
   NULL,  /* read_btrace_conf */
   NULL,  /* supports_range_stepping */
-  NULL,  /* pid_to_exec_file */
+  netbsd_pid_to_exec_file,
   NULL,  /* multifs_open */
   NULL,  /* multifs_unlink */
   NULL,  /* multifs_readlink */
