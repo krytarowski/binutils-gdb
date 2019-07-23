@@ -1651,6 +1651,20 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
   return len;
 }
 
+/* Implementation of the target_ops method "sw_breakpoint_from_kind".  */
+
+static const gdb_byte *
+netbsd_sw_breakpoint_from_kind (int kind, int *size)
+{
+  static gdb_byte brkpt[PTRACE_BREAKPOINT_SIZE];
+
+  *size = PTRACE_BREAKPOINT_SIZE;
+
+  memcpy(brkpt, PTRACE_BREAKPOINT, PTRACE_BREAKPOINT_SIZE);
+
+  return brkpt;
+}
+
 static int
 netbsd_supports_catch_syscall (void)
 {
@@ -1731,11 +1745,11 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* multifs_unlink */
   NULL,  /* multifs_readlink */
   NULL,  /* breakpoint_kind_from_pc */
-  NULL,  /* sw_breakpoint_from_kind */
+  netbsd_sw_breakpoint_from_kind,
   NULL,  /* thread_name */
   NULL,  /* breakpoint_kind_from_current_state */
   NULL,  /* supports_software_single_step */
-  netbsd_supports_catch_syscall,  /* supports_catch_syscall */
+  netbsd_supports_catch_syscall,
   NULL,  /* get_ipa_tdesc_idx */
   NULL,  /* thread_handle */
 };
