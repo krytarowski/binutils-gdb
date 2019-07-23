@@ -235,6 +235,9 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   int result;
   int saved_errno;
 
+  if (pid == 1)
+    __builtin_trap();
+
   netbsd_debug ("[%d] PTRACE (%s, pid=%d, addr=%p, "
              "data=%#x)", getpid(),
              ptrace_request_to_str (request), pid,
@@ -976,7 +979,7 @@ static int
 netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
 {
   struct ptrace_io_desc pio;
-  int pid = lwpid_of (current_thread);
+  pid_t pid = pid_of (current_thread);
 
   pio.piod_op = PIOD_READ_AUXV;
   pio.piod_offs = (void *)(intptr_t)offset;
@@ -1055,9 +1058,10 @@ static int
 netbsd_stopped_by_sw_breakpoint (void)
 {
   ptrace_siginfo_t psi;
-  pid_t pid = lwpid_of (current_thread);
+  pid_t pid = pid_of (current_thread);
 
-  netbsd_ptrace (PT_GET_SIGINFO, pid, &psi, sizeof(psi));
+  if (netbsd_ptrace (PT_GET_SIGINFO, pid, &psi, sizeof(psi)) == -1)
+    return -1; // XXX
 
   return psi.psi_siginfo.si_signo == SIGTRAP &&
          psi.psi_siginfo.si_code == TRAP_TRACE;
@@ -1506,7 +1510,7 @@ netbsd_qxfer_libraries_svr4 (const char *annex, unsigned char *readbuf,
   if (readbuf == NULL)
     return -1;
 
-  pid = lwpid_of (current_thread);
+  pid = pid_of (current_thread);
   xsnprintf (filename, sizeof filename, "/proc/%d/exe", pid);
   is_elf64 = elf_64_file_p (filename, &machine);
   lmo = is_elf64 ? &lmo_64bit_offsets : &lmo_32bit_offsets;
