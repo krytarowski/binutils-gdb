@@ -83,41 +83,6 @@ netbsd_ptid_t (pid_t pid, lwpid_t tid)
   return ptid_t (pid, tid, 0);
 }
 
-/* Return the process ID of the given PTID.
-
-   This function has little reason to exist, it's just a wrapper around
-   ptid_get_pid.  But since we have a getter function for the lynxos
-   ptid, it feels cleaner to have a getter for the pid as well.  */
-
-static int
-netbsd_ptid_get_pid (ptid_t ptid)
-{
-  return ptid.pid ();
-}
-
-/* Return the NetBSD tid of the given PTID.  */
-
-#if 0
-static long
-netbsd_ptid_get_tid (ptid_t ptid)
-{
-  /* See lynx_ptid_t: The NetBSD tid is stored inside the lwp field
-     of the ptid.  */
-  return ptid.lwp ();
-}
-#endif
-
-/* For a given PTID, return the associated PID as known by the NetBSD
-   ptrace layer.  */
-
-#if 0
-static pid_t
-netbsd_ptrace_pid_from_ptid (ptid_t ptid)
-{
-  return netbsd_ptid_get_pid (ptid);
-}
-#endif
-
 /* Return a string image of the ptrace REQUEST number.  */
 
 static const char *
@@ -542,7 +507,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
   if (ptid == minus_one_ptid)
     ptid = ptid_of (current_thread);
 
-  pid = netbsd_ptid_get_pid (ptid);
+  pid = ptid.pid();
 
   int options = 0;
   if (target_options & TARGET_WNOHANG)
@@ -755,12 +720,10 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
   ptid_t new_ptid;
 
   netbsd_debug ("netbsd_wait (pid = %d, %s)",
-              netbsd_ptid_get_pid (ptid),
-              options & TARGET_WNOHANG ? "WNOHANG" : "" );
+                ptid.pid(), options & TARGET_WNOHANG ? "WNOHANG" : "" );
   new_ptid = netbsd_wait_1 (ptid, status, options);
   netbsd_debug ("          -> (pid=%d, status->kind = %s)",
-	      netbsd_ptid_get_pid (new_ptid),
-	      netbsd_wait_kind_to_str(status->kind));
+	        new_ptid.pid(), netbsd_wait_kind_to_str(status->kind));
   return new_ptid;
 }
 
@@ -963,7 +926,7 @@ netbsd_request_interrupt (void)
 {
   ptid_t inferior_ptid = ptid_of (get_first_thread ());
 
-  kill (netbsd_ptid_get_pid (inferior_ptid), SIGINT);
+  kill (inferior_ptid.pid(), SIGINT);
 }
 
 /* Copy LEN bytes from inferior's auxiliary vector starting at OFFSET
