@@ -962,9 +962,74 @@ netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
 }
 
 static int
+netbsd_supports_z_point_type (char z_type)
+{
+  switch (z_type)
+    {
+    case Z_PACKET_SW_BP:
+#if 0
+    case Z_PACKET_HW_BP:
+    case Z_PACKET_WRITE_WP:
+    case Z_PACKET_READ_WP:
+    case Z_PACKET_ACCESS_WP:
+#endif
+      return 1;
+    default:
+      return 0;
+    }
+}
+
+/* Insert {break/watch}point at address ADDR.  SIZE is not used.  */
+
+static int
+netbsd_insert_point (enum raw_bkpt_type type, CORE_ADDR addr,
+                     int size, struct raw_breakpoint *bp)
+{
+  netbsd_debug ("%s type:%c addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
+
+  switch (type)
+    {
+    case raw_bkpt_type_sw:
+      return insert_memory_breakpoint (bp);
+    case raw_bkpt_type_hw:
+    case raw_bkpt_type_write_wp:
+    case raw_bkpt_type_read_wp:
+    case raw_bkpt_type_access_wp:
+    default:
+      return 1; /* Not supported.  */
+    }
+}
+
+/* Remove {break/watch}point at address ADDR.  SIZE is not used.  */
+
+static int
+netbsd_remove_point (enum raw_bkpt_type type, CORE_ADDR addr,
+                     int size, struct raw_breakpoint *bp)
+{
+  netbsd_debug ("%s type:%c addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
+  switch (type)
+    {
+    case raw_bkpt_type_sw:
+      return remove_memory_breakpoint (bp);
+    case raw_bkpt_type_hw:
+    case raw_bkpt_type_write_wp:
+    case raw_bkpt_type_read_wp:
+    case raw_bkpt_type_access_wp:
+    default:
+      return 1; /* Not supported.  */
+    }
+}
+
+static int
 netbsd_supports_non_stop (void)
 {
   return 0;
+}
+
+static int
+netbsd_supports_multi_process (void)
+{
+  return 0; /* XXX */
 }
 
 /* Check if fork events are supported.  */
@@ -1562,9 +1627,9 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* look_up_symbols */
   netbsd_request_interrupt,
   netbsd_read_auxv,
-  NULL,  /* supports_z_point_type */
-  NULL,  /* insert_point */
-  NULL,  /* remove_point */
+  netbsd_supports_z_point_type,
+  netbsd_insert_point,
+  netbsd_remove_point,
   NULL,  /* stopped_by_sw_breakpoint */
   NULL,  /* supports_stopped_by_sw_breakpoint */
   NULL,  /* stopped_by_hw_breakpoint */
@@ -1581,7 +1646,7 @@ static struct target_ops netbsd_target_ops = {
   netbsd_supports_non_stop,
   NULL,  /* async */
   NULL,  /* start_non_stop */
-  NULL,  /* supports_multi_process */
+  netbsd_supports_multi_process,
   netbsd_supports_fork_events,
   netbsd_supports_vfork_events,
   netbsd_supports_exec_events,
