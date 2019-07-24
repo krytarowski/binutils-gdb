@@ -226,12 +226,11 @@ netbsd_sysctl (const int *name, u_int namelen, void *oldp, size_t *oldlenp,
 
   netbsd_debug ("SYSCTL (name=%s, namelen=%u, oldp=%p, oldlenp=%p, newp=%p, "
                 "newlen=%zu)\n",
-                str.str(), namelen, oldp, oldlenp, newp, newlen);
-  result = sysctl();
+                str.c_str(), namelen, oldp, oldlenp, newp, newlen);
+  result = sysctl(name, namelen, oldp, oldlenp, newp, newlen);
 
   netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
 
-  errno = saved_errno;
   return result;
 }
 
@@ -297,7 +296,7 @@ netbsd_add_threads_sysctl (pid_t pid)
   mib[3] = sizeof(struct kinfo_lwp);
   mib[4] = 0;
 
-  if (sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+  if (netbsd_sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
     trace_start_error_with_name ("sysctl");
 
   mib[4] = size / sizeof(size_t);
@@ -306,7 +305,7 @@ netbsd_add_threads_sysctl (pid_t pid)
   if (kl == NULL)
     trace_start_error_with_name ("malloc");
 
-  if (sysctl(mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
+  if (netbsd_sysctl (mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
     trace_start_error_with_name ("sysctl");
 
   nlwps = size / sizeof(struct kinfo_lwp);
@@ -330,7 +329,7 @@ netbsd_create_inferior (const char *program,
   std::string str_program_args = stringify_argv (program_args);
 
   netbsd_debug ("%s(program='%s', args=%s)\n",
-                __func__, program, str_program_args.str());
+                __func__, program, str_program_args.c_str());
 
   pid = fork_inferior (program,
 		       str_program_args.c_str (),
@@ -500,7 +499,7 @@ pid_to_exec_file (pid_t pid)
   size_t len;
 
   len = sizeof(path);
-  if (sysctl(name, __arraycount(name), path, &len, NULL, 0) == -1)
+  if (netbsd_sysctl (name, __arraycount(name), path, &len, NULL, 0) == -1)
     return NULL;
 
   return path;
@@ -971,7 +970,7 @@ static int
 netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
 {
   netbsd_debug ("%s(offset=%p, myaddr=%, size=%u)\n",
-                __func__, offset, myaddr, size);
+                __func__, offset, myaddr, len);
 
   struct ptrace_io_desc pio;
   pid_t pid = pid_of (current_thread);
@@ -1717,7 +1716,7 @@ netbsd_thread_name (ptid_t ptid)
   mib[3] = sizeof(struct kinfo_lwp);
   mib[4] = 0;
 
-  if (sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+  if (netbsd_sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
     perror_with_name (("sysctl"));
 
   mib[4] = size / sizeof(size_t);
@@ -1726,7 +1725,7 @@ netbsd_thread_name (ptid_t ptid)
   if (kl == NULL)
     perror_with_name (("malloc"));
 
-  if (sysctl(mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
+  if (netbsd_sysctl (mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
     perror_with_name (("sysctl"));
 
   nlwps = size / sizeof(struct kinfo_lwp);
