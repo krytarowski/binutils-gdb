@@ -736,8 +736,8 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
 {
   ptid_t new_ptid;
 
-  netbsd_debug ("%s (pid = %d, %s)\n", __func__,
-                ptid.pid(), options & TARGET_WNOHANG ? "WNOHANG" : "" );
+  netbsd_debug ("%s (pid = %d, options=%s)\n", __func__,
+                ptid.pid(), options & TARGET_WNOHANG ? "WNOHANG" : "0" );
   new_ptid = netbsd_wait_1 (ptid, status, options);
   netbsd_debug ("          -> (pid=%d, status->kind = %s)\n",
 	        new_ptid.pid(), netbsd_wait_kind_to_str(status->kind));
