@@ -390,8 +390,7 @@ netbsd_create_inferior (const char *program,
   return pid;
 }
 
-/* Assuming we've just attached to a running inferior whose pid is PID,
-   add all threads running in that process.  */
+/* Assuming we've just attached to a running inferior whose pid is PID */
 
 static void
 netbsd_add_threads_after_attach (pid_t pid)
