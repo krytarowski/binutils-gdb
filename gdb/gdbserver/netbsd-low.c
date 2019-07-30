@@ -362,6 +362,28 @@ repeat:
   __unreachable();
 }
 
+/* Assuming we've just attached to a stopped and waited inferior whose pid is PID */
+
+static void
+netbsd_add_threads_after_attach (pid_t pid)
+{
+  struct ptrace_lwpinfo pl;
+
+  pl.pl_lwpid = 0;
+  while (netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
+    pl.pl_lwpid != 0)
+    {
+      ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
+
+      if (!find_thread_ptid (thread_ptid))
+	{
+	  netbsd_debug ("New thread: (pid = %d, tid = %d)\n",
+		      pid, pl.pl_lwpid);
+	  add_thread (thread_ptid, NULL);
+	}
+    }
+}
+
 /* Implement the create_inferior method of the target_ops vector.  */
 
 static int
@@ -388,28 +410,6 @@ netbsd_create_inferior (const char *program,
   post_fork_inferior (pid, program);
 
   return pid;
-}
-
-/* Assuming we've just attached to a running inferior whose pid is PID */
-
-static void
-netbsd_add_threads_after_attach (pid_t pid)
-{
-  struct ptrace_lwpinfo pl;
-
-  pl.pl_lwpid = 0;
-  while (netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
-    pl.pl_lwpid != 0)
-    {
-      ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
-
-      if (!find_thread_ptid (thread_ptid))
-	{
-	  netbsd_debug ("New thread: (pid = %d, tid = %d)\n",
-		      pid, pl.pl_lwpid);
-	  add_thread (thread_ptid, NULL);
-	}
-    }
 }
 
 /* Implement the attach target_ops method.  */
