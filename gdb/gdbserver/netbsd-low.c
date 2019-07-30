@@ -158,6 +158,23 @@ ptrace_request_to_str (int request)
   return "<unknown-request>";
 }
 
+/* A wrapper around waitpid that handles the various idiosyncrasies
+   of NetBSD waitpid.  */
+
+static int
+netbsd_waitpid (int pid, int *stat_loc, int options)
+{
+  int ret;
+
+  do
+    {
+      ret = waitpid (pid, stat_loc, options);
+    }
+  while (ret == -1 && errno == EINTR);
+
+  return ret;
+}
+
 static const char *
 netbsd_wait_kind_to_str (int kind)
 {
@@ -319,6 +336,32 @@ netbsd_add_threads_sysctl (pid_t pid)
   xfree(kl);
 }
 
+static void
+netbsd_wait_stopped_noreap (pid_t pid)
+{
+  int status;
+
+  gdb_assert (pid > 0);
+
+repeat:
+  pid_t wpid = netbsd_waitpid (pid, &status, WNOWAIT);
+
+  if (wpid == -1 || wpid != pid)
+    internal_error (__FILE__, __LINE__, _("unexpected waitpid return value %d"), wpid);
+
+  if (WIFSTOPPED (status))
+    return;
+
+  if (WIFSIGNALED (status) || WIFEXITED (status))
+    internal_error (__FILE__, __LINE__, _("tracee died"));
+
+  // Should not happen
+  if (WIFCONTINUED (status))
+    goto repeat;
+
+  __unreachable();
+}
+
 /* Implement the create_inferior method of the target_ops vector.  */
 
 static int
@@ -337,6 +380,8 @@ netbsd_create_inferior (const char *program,
 		       NULL, NULL, NULL, NULL);
 
   netbsd_add_process (pid, 0);
+
+  netbsd_wait_stopped_noreap (pid);
 
   netbsd_add_threads_sysctl (pid);
 
@@ -470,23 +515,6 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
   netbsd_ptrace (PT_CONTINUE, ptid.pid(), (void *)1, signal);
   if (errno)
     perror_with_name ("ptrace");
-}
-
-/* A wrapper around waitpid that handles the various idiosyncrasies
-   of NetBSD waitpid.  */
-
-static int
-netbsd_waitpid (int pid, int *stat_loc, int options)
-{
-  int ret;
-
-  do
-    {
-      ret = waitpid (pid, stat_loc, options);
-    }
-  while (ret == -1 && errno == EINTR);
-
-  return ret;
 }
 
 static char *
