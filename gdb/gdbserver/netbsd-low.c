@@ -875,7 +875,7 @@ netbsd_store_registers (struct regcache *regcache, int regno)
 static int
 netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 {
-  netbsd_debug ("%s(memaddr=%p, myaddr=%, size=%d)\n",
+  netbsd_debug ("%s(memaddr=%p, myaddr=%p, size=%d)\n",
                 __func__, memaddr, myaddr, size);
 
   struct ptrace_io_desc io;
@@ -915,7 +915,7 @@ netbsd_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int size)
 static int
 netbsd_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int size)
 {
-  netbsd_debug ("%s(memaddr=%p, myaddr=%, size=%d)\n",
+  netbsd_debug ("%s(memaddr=%p, myaddr=%p, size=%d)\n",
                 __func__, memaddr, myaddr, size);
 
   struct ptrace_io_desc io;
