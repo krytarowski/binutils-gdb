@@ -770,7 +770,7 @@ netbsd_wait (ptid_t ptid, struct target_waitstatus *status, int options)
 	        new_ptid.pid(), netbsd_wait_kind_to_str(status->kind));
   if (status->kind == TARGET_WAITKIND_EXECD)
     {
-        netbsd_debug ("          -> (execd_pathname=%s)\n",
+        netbsd_debug ("          -> (execd_pathname='%s')\n",
                       status->value.execd_pathname);
     }
 
