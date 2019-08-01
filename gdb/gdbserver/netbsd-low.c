@@ -1508,7 +1508,11 @@ elf_64_file_p (const char *file, unsigned int *machine)
     }
   close (fd);
 
-  return elf_64_header_p (&header, machine);
+  int is64 = elf_64_header_p (&header, machine);
+
+  netbsd_debug ("%s(): file='%s' is64=%d\n", __func__, file, is64);
+
+  return is64;
 }
 
 /* Construct qXfer:libraries-svr4:read reply.  */
