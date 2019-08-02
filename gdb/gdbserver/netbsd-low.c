@@ -1002,7 +1002,7 @@ netbsd_request_interrupt (void)
 static int
 netbsd_read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
 {
-  netbsd_debug ("%s(offset=%p, myaddr=%, size=%u)\n",
+  netbsd_debug ("%s(offset=%p, myaddr=%p, size=%u)\n",
                 __func__, offset, myaddr, len);
 
   struct ptrace_io_desc pio;

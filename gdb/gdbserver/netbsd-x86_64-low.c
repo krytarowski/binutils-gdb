@@ -24,6 +24,8 @@
 #include "x86-tdesc.h"
 #include "tdesc.h"
 
+static int use_xml;
+
 /* The index of various registers inside the regcache.  */
 
 enum netbsd_x86_64_gdb_regnum
@@ -298,6 +300,66 @@ netbsd_x86_64_arch_setup (void)
   netbsd_tdesc = tdesc;
 }
 
+/* Update all the target description of all processes; a new GDB
+   connected, and it may or not support xml target descriptions.  */
+
+static void
+x86_64_netbsd_update_xmltarget (void)
+{
+  struct thread_info *saved_thread = current_thread;
+
+  /* Before changing the register cache's internal layout, flush the
+     contents of the current valid caches back to the threads, and
+     release the current regcache objects.  */
+  regcache_release ();
+
+  for_each_process ([] (process_info *proc) {
+    int pid = proc->pid;
+
+    /* Look up any thread of this process.  */
+    current_thread = find_any_thread_of_pid (pid);
+
+    the_low_target.arch_setup ();
+  });
+
+  current_thread = saved_thread;
+}
+
+/* Process qSupported query, "xmlRegisters=". */
+
+static void
+netbsd_x86_64_process_qsupported (char **features, int count)
+{
+  int i;
+
+  /* Return if gdb doesn't support XML.  If gdb sends "xmlRegisters="
+     with "i386" in qSupported query, it supports x86 XML target
+     descriptions.  */
+  use_xml = 0;
+  for (i = 0; i < count; i++)
+    {
+      const char *feature = features[i];
+
+      if (startswith (feature, "xmlRegisters="))
+        {
+          char *copy = xstrdup (feature + 13);
+          char *p;
+
+          for (p = strtok (copy, ","); p != NULL; p = strtok (NULL, ","))
+            {
+              if (strcmp (p, "i386") == 0)
+                {
+                  use_xml = 1;
+                  break;
+                }
+            }
+
+          free (copy);
+        }
+    }
+  x86_64_netbsd_update_xmltarget ();
+}
+
 /* Description of all the x86-netbsd register sets.  */
 
 struct netbsd_regset_info netbsd_target_regsets[] = {
@@ -317,4 +379,5 @@ struct netbsd_regset_info netbsd_target_regsets[] = {
 
 struct netbsd_target_ops the_low_target = {
   netbsd_x86_64_arch_setup,
+  netbsd_x86_64_process_qsupported,
 };

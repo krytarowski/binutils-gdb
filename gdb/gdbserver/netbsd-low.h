@@ -48,6 +48,9 @@ struct netbsd_target_ops
 {
   /* Architecture-specific setup.  */
   void (*arch_setup) (void);
+
+  /* Hook to support target specific qSupported.  */
+  void (*process_qsupported) (char **, int count);
 };
 
 extern struct netbsd_target_ops the_low_target;
