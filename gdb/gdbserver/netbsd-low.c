@@ -1111,6 +1111,45 @@ netbsd_supports_stopped_by_sw_breakpoint (void)
 }
 
 static int
+netbsd_qxfer_siginfo (const char *annex, unsigned char *readbuf,
+                     unsigned const char *writebuf, CORE_ADDR offset, int len)
+{
+  netbsd_debug ("%s(annex=%p, readbuf=%p, writebuf=%p, offset=%p len=%d)\n",
+                __func__, annex, readbuf, writebuf, offset, len);
+
+  if (current_thread == NULL)
+    return -1;
+
+  pid_t pid = pid_of (current_thread);
+
+  netbsd_debug ("%s siginfo for lwp %d.\n",
+                readbuf != NULL ? "Reading" : "Writing",
+                pid);
+
+  if (offset >= sizeof (siginfo))
+    return -1;
+
+  struct ptrace_siginfo psi;
+  if (ptrace (PT_GET_SIGINFO, pid, &psi, sizeof(psi)) != 0)
+    return -1;
+
+  if (offset + len > sizeof (siginfo))
+    len = sizeof (siginfo) - offset;
+
+  if (readbuf != NULL)
+    memcpy (readbuf, (char *)&psi.psi_siginfo + offset, len);
+  else
+    {
+      memcpy ((char *)&psi.psi_siginfo + offset, writebuf, len);
+
+      if (ptrace (PT_SET_SIGINFO, pid, &psi, sizeof(psi)) != 0)
+        return -1;
+    }
+
+  return len;
+}
+
+static int
 netbsd_supports_non_stop (void)
 {
   netbsd_debug ("%s()\n", __func__);
@@ -1823,7 +1862,7 @@ static struct target_ops netbsd_target_ops = {
   NULL,  /* qxfer_spu */
   hostio_last_error_from_errno,
   NULL,  /* qxfer_osdata */
-  NULL,  /* qxfer_siginfo */
+  netbsd_qxfer_siginfo,
   netbsd_supports_non_stop,
   NULL,  /* async */
   NULL,  /* start_non_stop */
