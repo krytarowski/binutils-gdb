@@ -663,10 +663,12 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
               ourstatus->kind = TARGET_WAITKIND_SYSCALL_RETURN;
               ourstatus->value.syscall_number = psi.psi_siginfo.si_sysnum;
               break;
+#if 0
             case TRAP_EXEC:
               ourstatus->kind = TARGET_WAITKIND_EXECD;
               ourstatus->value.execd_pathname = xstrdup(pid_to_exec_file (wpid));
               break;
+#endif
             case TRAP_LWP:
             case TRAP_CHLD:
               if (netbsd_ptrace (PT_GET_PROCESS_STATE, wpid, &pst, sizeof(pst)) == -1)
