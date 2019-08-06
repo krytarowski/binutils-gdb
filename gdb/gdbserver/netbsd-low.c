@@ -158,6 +158,25 @@ ptrace_request_to_str (int request)
   return "<unknown-request>";
 }
 
+/* Return a string image of the ptrace REQUEST number.  */
+
+static const char *
+ptrace_ptio_request_to_str (int request)
+{
+#define CASE(X) case X: return #X
+  switch (request)
+    {
+      CASE(PIOD_READ_D);
+      CASE(PIOD_WRITE_D);
+      CASE(PIOD_READ_I);
+      CASE(PIOD_WRITE_I);
+      CASE(PIOD_READ_AUXV);
+    }
+#undef CASE
+
+  return "<unknown-request>";
+}
+
 /* A wrapper around waitpid that handles the various idiosyncrasies
    of NetBSD waitpid.  */
 
@@ -214,11 +233,28 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   netbsd_debug ("PTRACE (%s, pid=%d, addr=%p, data=%#x)\n",
               ptrace_request_to_str (request), pid, addr, data);
 
+  if (request == PT_IO)
+    {
+      struct ptrace_io_desc *pio = (struct ptrace_io_desc *)addr;
+      netbsd_debug (":: { .piod_op=%s, .piod_offs=%p, .piod_addr=%p, "
+                    ".piod_len=%zu }\n",
+                    ptrace_ptio_request_to_str (pio->piod_op),
+                    pio->piod_offs, pio->piod_addr, pio->piod_len);
+    }
+
   saved_errno = errno;
   errno = 0;
   result = ptrace (request, pid, addr, data);
 
   netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
+  if (request == PT_IO)
+    {
+      struct ptrace_io_desc *pio = (struct ptrace_io_desc *)addr;
+      netbsd_debug (" -> :: { .piod_op=%s, .piod_offs=%p, .piod_addr=%p, "
+                    ".piod_len=%zu }\n",
+                    ptrace_ptio_request_to_str (pio->piod_op),
+                    pio->piod_offs, pio->piod_addr, pio->piod_len);
+    }
 
   errno = saved_errno;
   return result;
@@ -1047,7 +1083,7 @@ static int
 netbsd_insert_point (enum raw_bkpt_type type, CORE_ADDR addr,
                      int size, struct raw_breakpoint *bp)
 {
-  netbsd_debug ("%s type:%c addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
+  netbsd_debug ("%s type:%#x addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
 
   switch (type)
     {
