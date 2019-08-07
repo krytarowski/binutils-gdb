@@ -240,6 +240,11 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
                     ".piod_len=%zu }\n",
                     ptrace_ptio_request_to_str (pio->piod_op),
                     pio->piod_offs, pio->piod_addr, pio->piod_len);
+      if (pio->piod_op == PT_WRITE_I || pio->piod_op == PT_WRITE_D)
+        {
+          for (size_t i = 0; i < pio->piod_len; i++)
+            netbsd_debug (" :: [%02zu] = %#02x\n", i, (unsigned char)((char *)pio->piod_addr)[i]);
+        }
     }
 
   saved_errno = errno;
@@ -254,6 +259,11 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
                     ".piod_len=%zu }\n",
                     ptrace_ptio_request_to_str (pio->piod_op),
                     pio->piod_offs, pio->piod_addr, pio->piod_len);
+      if (pio->piod_op == PT_READ_I || pio->piod_op == PT_READ_D)
+        {
+          for (size_t i = 0; i < pio->piod_len; i++)
+            netbsd_debug (" :: [%02zu] = %#02x\n", i, (unsigned char)((char *)pio->piod_addr)[i]);
+        }
     }
 
   errno = saved_errno;
