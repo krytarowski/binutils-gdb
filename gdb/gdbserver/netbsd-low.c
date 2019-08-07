@@ -802,6 +802,16 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
           switch (psi.psi_siginfo.si_code)
             {
             case TRAP_BRKPT:
+#ifdef PTRACE_BREAKPOINT_ADJ
+              {
+                CORE_ADDR pc;
+                struct reg r;
+                netbsd_ptrace (PT_GETREGS, wpid, &r, psi.psi_lwpid);
+                pc = PTRACE_REG_PC (&r);
+                PTRACE_REG_SET_PC (&r, pc - PTRACE_BREAKPOINT_ADJ);
+                netbsd_ptrace (PT_SETREGS, wpid, &r, psi.psi_lwpid);
+              }
+#endif
             case TRAP_DBREG:
             case TRAP_TRACE:
               /* These stop reasons return STOPPED and are distinguished later */
