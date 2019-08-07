@@ -158,8 +158,6 @@ ptrace_request_to_str (int request)
   return "<unknown-request>";
 }
 
-/* Return a string image of the ptrace REQUEST number.  */
-
 static const char *
 ptrace_ptio_request_to_str (int request)
 {
@@ -175,6 +173,113 @@ ptrace_ptio_request_to_str (int request)
 #undef CASE
 
   return "<unknown-request>";
+}
+
+/* Return a string image of the ptrace REQUEST number.  */
+
+static const char *
+sigcode_to_str (int signo, int sigcode)
+{
+#define CASE(X) case X: return #X
+  switch (signo)
+    {
+      case SIGILL:
+      switch (sigcode)
+        {
+          CASE(ILL_ILLOPC);
+          CASE(ILL_ILLOPN);
+          CASE(ILL_ILLADR);
+          CASE(ILL_ILLTRP);
+          CASE(ILL_PRVOPC);
+          CASE(ILL_PRVREG);
+          CASE(ILL_COPROC);
+          CASE(ILL_BADSTK);
+        }
+        break;
+
+      case SIGFPE:
+      switch (sigcode)
+        {
+          CASE(FPE_INTDIV);
+          CASE(FPE_INTOVF);
+          CASE(FPE_FLTDIV);
+          CASE(FPE_FLTOVF);
+          CASE(FPE_FLTUND);
+          CASE(FPE_FLTRES);
+          CASE(FPE_FLTINV);
+          CASE(FPE_FLTSUB);
+        }
+        break;
+
+      case SIGSEGV:
+      switch (sigcode)
+        {
+          CASE(SEGV_MAPERR);
+          CASE(SEGV_ACCERR);
+        }
+        break;
+
+      case SIGBUS:
+      switch (sigcode)
+        {
+          CASE(BUS_ADRALN);
+          CASE(BUS_ADRERR);
+          CASE(BUS_OBJERR);
+        }
+        break;
+
+      case SIGTRAP:
+      switch (sigcode)
+        {
+          CASE(TRAP_BRKPT);
+          CASE(TRAP_TRACE);
+          CASE(TRAP_EXEC);
+          CASE(TRAP_CHLD);
+          CASE(TRAP_LWP);
+          CASE(TRAP_DBREG);
+          CASE(TRAP_SCE);
+          CASE(TRAP_SCX);
+        }
+        break;
+
+      case SIGCHLD:
+      switch (sigcode)
+        {
+          CASE(CLD_EXITED);
+          CASE(CLD_KILLED);
+          CASE(CLD_DUMPED);
+          CASE(CLD_TRAPPED);
+          CASE(CLD_STOPPED);
+          CASE(CLD_CONTINUED);
+        }
+        break;
+
+      case SIGIO:
+      switch (sigcode)
+        {
+          CASE(POLL_IN);
+          CASE(POLL_OUT);
+          CASE(POLL_MSG);
+          CASE(POLL_ERR);
+          CASE(POLL_PRI);
+          CASE(POLL_HUP);
+        }
+        break;
+    }
+
+  switch (sigcode)
+    {
+      CASE(SI_USER);
+      CASE(SI_QUEUE);
+      CASE(SI_TIMER);
+      CASE(SI_ASYNCIO);
+      CASE(SI_MESGQ);
+      CASE(SI_LWP);
+      CASE(SI_NOINFO);
+    }
+#undef CASE
+
+  return "<unknown-sigcode>";
 }
 
 /* A wrapper around waitpid that handles the various idiosyncrasies
@@ -1143,8 +1248,13 @@ netbsd_stopped_by_sw_breakpoint (void)
   if (netbsd_ptrace (PT_GET_SIGINFO, pid, &psi, sizeof(psi)) == -1)
     return -1; // XXX
 
+  netbsd_debug (" -> psi_lwpid = %d, psi_siginfo.si_signo=SIG%s, "
+                "psi_siginfo.si_code=%s\n", psi.psi_lwpid,
+                signalname(psi.psi_siginfo.si_signo),
+                sigcode_to_str(psi.psi_siginfo.si_signo, psi.psi_siginfo.si_code));
+
   return psi.psi_siginfo.si_signo == SIGTRAP &&
-         psi.psi_siginfo.si_code == TRAP_TRACE;
+         psi.psi_siginfo.si_code == TRAP_BRKPT;
 }
 
 /* Implement the to_supports_stopped_by_sw_breakpoint target_ops
