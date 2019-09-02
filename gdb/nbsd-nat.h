@@ -30,7 +30,7 @@ struct nbsd_nat_target : public inf_ptrace_target
   int find_memory_regions (find_memory_region_ftype func, void *data) override;
 
   bool thread_alive (ptid_t ptid) override;
-  const char *pid_to_str (ptid_t) override;
+  std::string pid_to_str (ptid_t) override;
 
   const char *thread_name (struct thread_info *) override;
 

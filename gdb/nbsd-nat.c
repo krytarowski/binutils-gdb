@@ -24,7 +24,7 @@
 #include "regset.h"
 #include "gdbcmd.h"
 #include "gdbthread.h"
-#include "common/gdb_wait.h"
+#include "gdbsupport/gdb_wait.h"
 #include <sys/types.h>
 #include <sys/ptrace.h>
 #include <sys/sysctl.h>
@@ -78,14 +78,12 @@ nbsd_nat_target::find_memory_regions (find_memory_region_ftype func,
   pid_t pid = inferior_ptid.pid ();
   struct kinfo_vmentry *vmentl, *kve;
   uint64_t size;
-  struct cleanup *cleanup;
   int i;
   size_t nitems;
 
   vmentl = kinfo_getvmmap (pid, &nitems);
   if (vmentl == NULL)
     perror_with_name (_("Couldn't fetch VM map entries."));
-  cleanup = make_cleanup (free, vmentl);
 
   for (i = 0; i < nitems; i++)
     {
@@ -111,9 +109,9 @@ nbsd_nat_target::find_memory_regions (find_memory_region_ftype func,
       if (info_verbose)
 	{
 	  fprintf_filtered (gdb_stdout, 
-			    "Save segment, %ld bytes at %s (%c%c%c)\n",
+			    "Save segment, %ld bytes at %llx (%c%c%c)\n",
 			    (long) size,
-			    paddress (target_gdbarch (), kve->kve_start),
+			    (long long int)kve->kve_start,
 			    kve->kve_protection & KVME_PROT_READ ? 'r' : '-',
 			    kve->kve_protection & KVME_PROT_WRITE ? 'w' : '-',
 			    kve->kve_protection & KVME_PROT_EXEC ? 'x' : '-');
@@ -125,7 +123,7 @@ nbsd_nat_target::find_memory_regions (find_memory_region_ftype func,
 	    kve->kve_protection & KVME_PROT_WRITE,
 	    kve->kve_protection & KVME_PROT_EXEC, 1, obfd);
     }
-  do_cleanups (cleanup);
+  free(vmentl);
   return 0;
 }
 
@@ -159,7 +157,7 @@ nbsd_nat_target::thread_alive (ptid_t ptid)
 /* Convert PTID to a string.  Returns the string in a static
    buffer.  */
 
-const char *
+std::string
 nbsd_nat_target::pid_to_str (ptid_t ptid)
 {
   lwpid_t lwp;

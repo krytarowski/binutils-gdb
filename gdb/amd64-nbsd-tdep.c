@@ -243,16 +243,16 @@ amd64nbsd_trapframe_sniffer (const struct frame_unwind *self,
   ULONGEST cs = 0;
   const char *name;
 
-  TRY
+  try
     {
       cs = get_frame_register_unsigned (this_frame, AMD64_CS_REGNUM);
     }
-  CATCH (except, RETURN_MASK_ERROR)
+  catch (gdb_exception_error &except)
     {
       if (except.reason < 0 && except.error != NOT_AVAILABLE_ERROR)
-	throw_exception (except);
+	throw_exception (std::move (except));
     }
-  END_CATCH
+
   if ((cs & I386_SEL_RPL) == I386_SEL_UPL)
     return 0;
 
