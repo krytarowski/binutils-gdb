@@ -517,7 +517,7 @@ _rl_tropen ()
 	    : "."),
 	   getpid ());
 #else
-  sprintf (fnbuf, "/var/tmp/rltrace.%ld", (long) getpid ());
+  snprintf (fnbuf, sizeof(fnbuf), "/var/tmp/rltrace.%ld", (long)getpid());
 #endif
   unlink (fnbuf);
   _rl_tracefp = fopen (fnbuf, "w+");

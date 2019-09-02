@@ -1125,6 +1125,9 @@ case $cpu-$vendor in
 		cpu=neo
 		vendor=tandem
 		;;
+	neo-tandem)
+		basic_machine=neo-tandem
+		;;
 	nse-tandem)
 		cpu=nse
 		vendor=tandem
@@ -1512,6 +1515,10 @@ case $os in
 		;;
 	ios)
 		;;
+	z80-*-coff)
+		basic_machine=z80-unknown
+		os=-sim
+		;;
 	none)
 		;;
 	*-eabi)
@@ -1612,6 +1619,9 @@ case $cpu-$vendor in
 		;;
 	pru-*)
 		os=elf
+		;;
+	pru-*)
+		os=-elf
 		;;
 	*-be)
 		os=beos

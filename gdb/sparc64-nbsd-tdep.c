@@ -31,6 +31,7 @@
 #include "trad-frame.h"
 
 #include "sparc64-tdep.h"
+#include "sparc-nbsd-tdep.h"
 #include "nbsd-tdep.h"
 
 /* From <machine/reg.h>.  */

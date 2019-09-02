@@ -1516,7 +1516,7 @@ yylex (void)
   {
     std::string tmp = copy_name (yylval.sval);
     struct symbol *sym;
-    struct field_of_this_result is_a_field_of_this;
+    struct field_of_this_result is_a_field_of_this = { .type = NULL };
     int is_a_field = 0;
     int hextype;
 

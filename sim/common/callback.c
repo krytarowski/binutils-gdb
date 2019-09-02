@@ -424,7 +424,11 @@ os_system (host_callback *p, const char *s)
 static long
 os_time (host_callback *p, long *t)
 {
-  return wrap (p, time (t));
+  long v = (long)time(NULL);
+
+  if (t != NULL)
+    *t = v;
+  return wrap (p, v);
 }
 
 
