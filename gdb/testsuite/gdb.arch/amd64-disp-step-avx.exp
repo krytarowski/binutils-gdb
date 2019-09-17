@@ -28,6 +28,10 @@ standard_testfile .S
 set options [list debug \
 		 additional_flags=-static \
 		 additional_flags=-nostartfiles]
+if { [istarget "*-*-netbsd*"] } then {
+    lappend options ldflags=/usr/lib/sysident.o
+}
+
 if { [prepare_for_testing "failed to prepare" ${testfile} ${srcfile} $options] } {
     return -1
 }
