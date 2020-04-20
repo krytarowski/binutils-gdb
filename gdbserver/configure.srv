@@ -33,6 +33,10 @@ ipa_ppc_linux_regobj="powerpc-32l-ipa.o powerpc-altivec32l-ipa.o powerpc-vsx32l-
 # these files over and over again.
 srv_linux_obj="linux-low.o nat/linux-osdata.o nat/linux-procfs.o nat/linux-ptrace.o nat/linux-waitpid.o nat/linux-personality.o nat/linux-namespaces.o fork-child.o nat/fork-inferior.o"
 
+# NetBSD object files.  This is so we don't have to repeat
+# these files over and over again.
+srv_netbsd_obj="netbsd-low.o fork-child.o fork-inferior.o nat/fork-inferior.o"
+
 # Input is taken from the "${host}" and "${target}" variables.
 
 # GDBserver can only debug native programs.
@@ -407,8 +411,8 @@ case "${gdbserver_host}" in
 			srv_tgtobj="${srv_tgtobj} arch/amd64.o"
 			;;
   x86_64-*-netbsd*)	srv_regobj=""
-			srv_tgtobj="netbsd-low.o netbsd-x86_64-low.o fork-child.o"
-			srv_tgtobj="${srv_tgtobj} nat/fork-inferior.o"
+			srv_tgtobj="netbsd-x86_64-low.o"
+			srv_tgtobj="${srv_tgtobj} ${srv_netbsd_obj}"
 			srv_tgtobj="${srv_tgtobj} arch/amd64.o"
 			srv_netbsd=yes
 			;;
