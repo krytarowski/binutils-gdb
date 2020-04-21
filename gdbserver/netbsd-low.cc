@@ -45,6 +45,9 @@ struct process_info_private
   /* The PTID obtained from the last wait performed on this process.
      Initialized to null_ptid until the first wait is performed.  */
   ptid_t last_wait_event_ptid;
+
+  /* &_r_debug.  0 if not yet determined.  -1 if no PT_DYNAMIC in Phdrs.  */
+  CORE_ADDR r_debug;
 };
 
 /* Print a debug trace on standard output if debug_threads is set.  */
@@ -443,6 +446,200 @@ netbsd_ptrace_fun ()
     }  
 }
 
+static void
+netbsd_add_threads_sysctl (pid_t pid)
+{
+ struct kinfo_lwp *kl;
+  int mib[5];
+  size_t i, nlwps;
+  size_t size;
+
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_LWP;
+  mib[2] = pid;
+  mib[3] = sizeof(struct kinfo_lwp);
+  mib[4] = 0;
+
+  if (netbsd_sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+    trace_start_error_with_name ("sysctl");
+
+  mib[4] = size / sizeof(size_t);
+
+  kl = (struct kinfo_lwp *) xmalloc (size);
+  if (kl == NULL)
+    trace_start_error_with_name ("malloc");
+
+  if (netbsd_sysctl (mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
+    trace_start_error_with_name ("sysctl");
+
+  nlwps = size / sizeof(struct kinfo_lwp);
+
+  for (i = 0; i < nlwps; i++) {
+    ptid_t ptid = netbsd_ptid_t (pid, kl[i].l_lid);
+    netbsd_debug ("Registering thread (pid=%d, lwpid=%d)\n", pid, kl[i].l_lid);
+    add_thread (ptid, NULL);
+  }
+
+  xfree(kl);
+}
+
+const char *
+netbsd_thread_name (ptid_t ptid)
+{
+  netbsd_debug ("%s(ptid=(%d, %d, %d))\n",
+                __func__, ptid.pid(), ptid.lwp(), ptid.tid());
+
+  struct kinfo_lwp *kl;
+  pid_t pid = ptid.pid ();
+  lwpid_t lwp = ptid.lwp ();
+  static char buf[KI_LNAMELEN];
+  int mib[5];
+  size_t i, nlwps;
+  size_t size;
+
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_LWP;
+  mib[2] = pid;
+  mib[3] = sizeof(struct kinfo_lwp);
+  mib[4] = 0;
+
+  if (netbsd_sysctl (mib, 5, NULL, &size, NULL, 0) == -1 || size == 0)
+    perror_with_name (("sysctl"));
+
+  mib[4] = size / sizeof(size_t);
+
+  kl = (struct kinfo_lwp *) xmalloc (size);
+  if (kl == NULL)
+    perror_with_name (("malloc"));
+
+  if (netbsd_sysctl (mib, 5, kl, &size, NULL, 0) == -1 || size == 0)
+    perror_with_name (("sysctl"));
+
+  nlwps = size / sizeof(struct kinfo_lwp);
+  buf[0] = '\0';
+  for (i = 0; i < nlwps; i++) {
+    if (kl[i].l_lid == lwp) {
+      xsnprintf (buf, sizeof buf, "%s", kl[i].l_name);
+      break;
+    }
+  }
+  xfree(kl);
+
+  return buf;
+}
+
+static int
+netbsd_supports_catch_syscall (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 1;
+}
+
+/* Implementation of the target_ops method "sw_breakpoint_from_kind".  */
+
+static const gdb_byte *
+netbsd_sw_breakpoint_from_kind (int kind, int *size)
+{
+  netbsd_debug ("%s(kind=%d)\n", __func__, kind);
+
+  static gdb_byte brkpt[PTRACE_BREAKPOINT_SIZE];
+
+  *size = PTRACE_BREAKPOINT_SIZE;
+
+  memcpy(brkpt, PTRACE_BREAKPOINT, PTRACE_BREAKPOINT_SIZE);
+
+  return brkpt;
+}
+
+/* Implement the to_stopped_by_sw_breakpoint target_ops
+   method.  */
+
+static int
+netbsd_stopped_by_sw_breakpoint (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  ptrace_siginfo_t psi;
+  pid_t pid = pid_of (current_thread);
+
+  if (netbsd_ptrace (PT_GET_SIGINFO, pid, &psi, sizeof(psi)) == -1)
+    return -1; // XXX
+
+  netbsd_debug (" -> psi_lwpid = %d, psi_siginfo.si_signo=SIG%s, "
+                "psi_siginfo.si_code=%s\n", psi.psi_lwpid,
+                signalname(psi.psi_siginfo.si_signo),
+                sigcode_to_str(psi.psi_siginfo.si_signo, psi.psi_siginfo.si_code));
+
+  return psi.psi_siginfo.si_signo == SIGTRAP &&
+         psi.psi_siginfo.si_code == TRAP_BRKPT;
+}
+
+/* Implement the to_supports_stopped_by_sw_breakpoint target_ops
+   method.  */
+
+static int
+netbsd_supports_stopped_by_sw_breakpoint (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 1;
+}
+
+/* Check if exec events are supported.  */
+
+static int
+netbsd_supports_exec_events (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 1;
+}
+
+static int
+netbsd_supports_disable_randomization (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 0;
+}
+
+static int
+netbsd_supports_non_stop (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 0;
+}
+
+static int
+netbsd_supports_multi_process (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 0; /* XXX */
+}
+
+/* Check if fork events are supported.  */
+
+static int
+netbsd_supports_fork_events (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 1;
+}
+
+/* Check if vfork events are supported.  */
+
+static int
+netbsd_supports_vfork_events (void)
+{
+  netbsd_debug ("%s()\n", __func__);
+
+  return 1;
+}
+
 /* Implement the create_inferior method of the target_ops vector.  */
 
 int
@@ -462,9 +659,11 @@ netbsd_process_target::create_inferior (const char *program,
   post_fork_inferior (pid, program);
 
   netbsd_add_process (pid, 0);
-  /* Do not add the process thread just yet, as we do not know its tid.
-     We will add it later, during the wait for the STOP event corresponding
-     to the netbsd_ptrace (PTRACE_TRACEME) call above.  */
+
+  netbsd_add_threads_sysctl (pid);
+
+  post_fork_inferior (pid, program);
+  
   return pid;
 }
 
@@ -474,34 +673,21 @@ netbsd_process_target::create_inferior (const char *program,
 static void
 netbsd_add_threads_after_attach (int pid)
 {
-  /* Ugh!  There appears to be no way to get the list of threads
-     in the program we just attached to.  So get the list by calling
-     the "ps" command.  This is only needed now, as we will then
-     keep the thread list up to date thanks to thread creation and
-     exit notifications.  */
-  FILE *f;
-  char buf[256];
-  int thread_pid, thread_tid;
+  struct ptrace_lwpinfo pl;
 
-  f = popen ("ps atx", "r");
-  if (f == NULL)
-    perror_with_name ("Cannot get thread list");
-
-  while (fgets (buf, sizeof (buf), f) != NULL)
-    if ((sscanf (buf, "%d %d", &thread_pid, &thread_tid) == 2
-	 && thread_pid == pid))
+  pl.pl_lwpid = 0;
+  while (netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
+    pl.pl_lwpid != 0)
     {
-      ptid_t thread_ptid = netbsd_ptid_t (pid, thread_tid);
+      ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
 
       if (!find_thread_ptid (thread_ptid))
 	{
-	  netbsd_debug ("New thread: (pid = %d, tid = %d)",
-		      pid, thread_tid);
+	  netbsd_debug ("New thread: (pid = %d, tid = %d)\n",
+		      pid, pl.pl_lwpid);
 	  add_thread (thread_ptid, NULL);
 	}
     }
-
-  pclose (f);
 }
 
 /* Implement the attach target_ops method.  */
