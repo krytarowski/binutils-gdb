@@ -17,19 +17,22 @@
 
 #include "server.h"
 #include "target.h"
-#include "lynx-low.h"
+#include "netbsd-low.h"
 
-#include <limits.h>
-#include <sys/ptrace.h>
-#include <sys/piddef.h> /* Provides PIDGET, TIDGET, BUILDPID, etc.  */
-#include <unistd.h>
-#include <sys/ioctl.h>
 #include <sys/types.h>
-#include "gdbsupport/gdb_wait.h"
+#include <sys/ptrace.h>
+#include <sys/sysctl.h>
+#include <limits.h>
+#include <unistd.h>
 #include <signal.h>
+
+#include <elf.h>
+
+#include "gdbsupport/gdb_wait.h"
 #include "gdbsupport/filestuff.h"
 #include "gdbsupport/common-inferior.h"
 #include "nat/fork-inferior.h"
+#include "hostio.h"
 
 int using_threads = 1;
 
@@ -61,50 +64,6 @@ netbsd_debug (char *string, ...)
   va_end (args);
 }
 
-/* Build a ptid_t given a PID and a NetBSD TID.  */
-
-static ptid_t
-netbsd_ptid_t (int pid, long tid)
-{
-  /* brobecker/2010-06-21: It looks like the LWP field in ptids
-     should be distinct for each thread (see write_ptid where it
-     writes the thread ID from the LWP).  So instead of storing
-     the NetBSD tid in the tid field of the ptid, we store it in
-     the lwp field.  */
-  return ptid_t (pid, tid, 0);
-}
-
-/* Return the process ID of the given PTID.
-
-   This function has little reason to exist, it's just a wrapper around
-   ptid_get_pid.  But since we have a getter function for the NetBSD
-   ptid, it feels cleaner to have a getter for the pid as well.  */
-
-static int
-netbsd_ptid_get_pid (ptid_t ptid)
-{
-  return ptid.pid ();
-}
-
-/* Return the NetBSD tid of the given PTID.  */
-
-static long
-netbsd_ptid_get_tid (ptid_t ptid)
-{
-  /* See netbsd_ptid_t: The NetBSD tid is stored inside the lwp field
-     of the ptid.  */
-  return ptid.lwp ();
-}
-
-/* For a given PTID, return the associated PID as known by the NetBSD
-   ptrace layer.  */
-
-static int
-netbsd_ptrace_pid_from_ptid (ptid_t ptid)
-{
-  return BUILDPID (netbsd_ptid_get_pid (ptid), netbsd_ptid_get_tid (ptid));
-}
-
 /* Return a string image of the ptrace REQUEST number.  */
 
 static char *
@@ -113,73 +72,243 @@ ptrace_request_to_str (int request)
 #define CASE(X) case X: return #X
   switch (request)
     {
-      CASE(PTRACE_TRACEME);
-      CASE(PTRACE_PEEKTEXT);
-      CASE(PTRACE_PEEKDATA);
-      CASE(PTRACE_PEEKUSER);
-      CASE(PTRACE_POKETEXT);
-      CASE(PTRACE_POKEDATA);
-      CASE(PTRACE_POKEUSER);
-      CASE(PTRACE_CONT);
-      CASE(PTRACE_KILL);
-      CASE(PTRACE_SINGLESTEP);
-      CASE(PTRACE_ATTACH);
-      CASE(PTRACE_DETACH);
-      CASE(PTRACE_GETREGS);
-      CASE(PTRACE_SETREGS);
-      CASE(PTRACE_GETFPREGS);
-      CASE(PTRACE_SETFPREGS);
-      CASE(PTRACE_READDATA);
-      CASE(PTRACE_WRITEDATA);
-      CASE(PTRACE_READTEXT);
-      CASE(PTRACE_WRITETEXT);
-      CASE(PTRACE_GETFPAREGS);
-      CASE(PTRACE_SETFPAREGS);
-      CASE(PTRACE_GETWINDOW);
-      CASE(PTRACE_SETWINDOW);
-      CASE(PTRACE_SYSCALL);
-      CASE(PTRACE_DUMPCORE);
-      CASE(PTRACE_SETWRBKPT);
-      CASE(PTRACE_SETACBKPT);
-      CASE(PTRACE_CLRBKPT);
-      CASE(PTRACE_GET_UCODE);
-#ifdef PT_READ_GPR
-      CASE(PT_READ_GPR);
+      /* Machine Independent operations. */
+      CASE(PT_TRACE_ME);
+      CASE(PT_READ_I);
+      CASE(PT_READ_D);
+      CASE(PT_WRITE_I);
+      CASE(PT_WRITE_D);
+      CASE(PT_CONTINUE);
+      CASE(PT_KILL);
+      CASE(PT_ATTACH);
+      CASE(PT_DETACH);
+      CASE(PT_IO);
+      CASE(PT_DUMPCORE);
+      CASE(PT_SYSCALL);
+      CASE(PT_SYSCALLEMU);
+      CASE(PT_SET_EVENT_MASK);
+      CASE(PT_GET_EVENT_MASK);
+      CASE(PT_GET_PROCESS_STATE);
+      CASE(PT_SET_SIGINFO);
+      CASE(PT_GET_SIGINFO);
+      CASE(PT_RESUME);
+      CASE(PT_SUSPEND);
+      CASE(PT_STOP);
+      CASE(PT_LWPSTATUS);
+      CASE(PT_LWPNEXT);
+
+      /* Machine Dependent operations. */
+#ifdef PT_STEP
+      CASE(PT_STEP);
 #endif
-#ifdef PT_WRITE_GPR
-      CASE(PT_WRITE_GPR);
+#ifdef PT_GETREGS
+      CASE(PT_GETREGS);
 #endif
-#ifdef PT_READ_FPR
-      CASE(PT_READ_FPR);
+#ifdef PT_SETREGS
+      CASE(PT_SETREGS);
 #endif
-#ifdef PT_WRITE_FPR
-      CASE(PT_WRITE_FPR);
+#ifdef PT_GETFPREGS
+      CASE(PT_GETFPREGS);
 #endif
-#ifdef PT_READ_VPR
-      CASE(PT_READ_VPR);
+#ifdef PT_SETFPREGS
+      CASE(PT_SETFPREGS);
 #endif
-#ifdef PT_WRITE_VPR
-      CASE(PT_WRITE_VPR);
+#ifdef PT_GETDBREGS
+      CASE(PT_GETDBREGS);
 #endif
-#ifdef PTRACE_PEEKUSP
-      CASE(PTRACE_PEEKUSP);
+#ifdef PT_SETDBREGS
+      CASE(PT_SETDBREGS);
 #endif
-#ifdef PTRACE_POKEUSP
-      CASE(PTRACE_POKEUSP);
+#ifdef PT_SETSTEP
+      CASE(PT_SETSTEP);
 #endif
-      CASE(PTRACE_PEEKTHREAD);
-      CASE(PTRACE_THREADUSER);
-      CASE(PTRACE_FPREAD);
-      CASE(PTRACE_FPWRITE);
-      CASE(PTRACE_SETSIG);
-      CASE(PTRACE_CONT_ONE);
-      CASE(PTRACE_KILL_ONE);
-      CASE(PTRACE_SINGLESTEP_ONE);
-      CASE(PTRACE_GETLOADINFO);
-      CASE(PTRACE_GETTRACESIG);
-#ifdef PTRACE_GETTHREADLIST
-      CASE(PTRACE_GETTHREADLIST);
+#ifdef PT_CLEARSTEP
+      CASE(PT_CLEARSTEP);
 #endif
+#fidef PT_GETXSTATE
+      CASE(PT_GETXSTATE);
+#endif
+#ifdef PT_SETXSTATE
+      CASE(PT_SETXSTATE);
+#endif
+#ifdef PT_GETXMMREGS
+      CASE(PT_GETXMMREGS);
+#endif
+#ifdef PT_SETXMMREGS
+      CASE(PT_SETXMMREGS);
+#endif
+    }
+#undef CASE
+
+  return "<unknown-request>";
+}
+
+/* Return a string image of the ptrace PT_IO REQUEST number.  */
+
+static const char *
+ptrace_ptio_request_to_str (int request)
+{
+#define CASE(X) case X: return #X
+  switch (request)
+    {
+      CASE(PIOD_READ_D);
+      CASE(PIOD_WRITE_D);
+      CASE(PIOD_READ_I);
+      CASE(PIOD_WRITE_I);
+      CASE(PIOD_READ_AUXV);
+    }
+#undef CASE
+
+  return "<unknown-request>";
+}
+
+/* Return a string image of the siginfo_t::code.  */
+
+static const char *
+sigcode_to_str (int signo, int sigcode)
+{
+#define CASE(X) case X: return #X
+  switch (signo)
+    {
+      case SIGILL:
+      switch (sigcode)
+        {
+          CASE(ILL_ILLOPC);
+          CASE(ILL_ILLOPN);
+          CASE(ILL_ILLADR);
+          CASE(ILL_ILLTRP);
+          CASE(ILL_PRVOPC);
+          CASE(ILL_PRVREG);
+          CASE(ILL_COPROC);
+          CASE(ILL_BADSTK);
+        }
+        break;
+
+      case SIGFPE:
+      switch (sigcode)
+        {
+          CASE(FPE_INTDIV);
+          CASE(FPE_INTOVF);
+          CASE(FPE_FLTDIV);
+          CASE(FPE_FLTOVF);
+          CASE(FPE_FLTUND);
+          CASE(FPE_FLTRES);
+          CASE(FPE_FLTINV);
+          CASE(FPE_FLTSUB);
+        }
+        break;
+
+      case SIGSEGV:
+      switch (sigcode)
+        {
+          CASE(SEGV_MAPERR);
+          CASE(SEGV_ACCERR);
+        }
+        break;
+
+      case SIGBUS:
+      switch (sigcode)
+        {
+          CASE(BUS_ADRALN);
+          CASE(BUS_ADRERR);
+          CASE(BUS_OBJERR);
+        }
+        break;
+
+      case SIGTRAP:
+      switch (sigcode)
+        {
+          CASE(TRAP_BRKPT);
+          CASE(TRAP_TRACE);
+          CASE(TRAP_EXEC);
+          CASE(TRAP_CHLD);
+          CASE(TRAP_LWP);
+          CASE(TRAP_DBREG);
+          CASE(TRAP_SCE);
+          CASE(TRAP_SCX);
+        }
+        break;
+
+      case SIGCHLD:
+      switch (sigcode)
+        {
+          CASE(CLD_EXITED);
+          CASE(CLD_KILLED);
+          CASE(CLD_DUMPED);
+          CASE(CLD_TRAPPED);
+          CASE(CLD_STOPPED);
+          CASE(CLD_CONTINUED);
+        }
+        break;
+
+      case SIGIO:
+      switch (sigcode)
+        {
+          CASE(POLL_IN);
+          CASE(POLL_OUT);
+          CASE(POLL_MSG);
+          CASE(POLL_ERR);
+          CASE(POLL_PRI);
+          CASE(POLL_HUP);
+        }
+        break;
+    }
+
+  switch (sigcode)
+    {
+      CASE(SI_USER);
+      CASE(SI_QUEUE);
+      CASE(SI_TIMER);
+      CASE(SI_ASYNCIO);
+      CASE(SI_MESGQ);
+      CASE(SI_LWP);
+      CASE(SI_NOINFO);
+    }
+#undef CASE
+
+  return "<unknown-sigcode>";
+}
+
+/* A wrapper around waitpid that handles the various idiosyncrasies
+   of NetBSD waitpid.  */
+
+static int
+netbsd_waitpid (int pid, int *stat_loc, int options)
+{
+  int ret;
+
+  do
+    {
+      ret = waitpid (pid, stat_loc, options);
+    }
+  while (ret == -1 && errno == EINTR);
+
+  return ret;
+}
+
+/* Return a string image of the waitkind operation.  */
+
+static const char *
+netbsd_wait_kind_to_str (int kind)
+{
+#define CASE(X) case X: return #X
+  switch (kind)
+    {
+      CASE(TARGET_WAITKIND_EXITED);
+      CASE(TARGET_WAITKIND_STOPPED);
+      CASE(TARGET_WAITKIND_SIGNALLED);
+      CASE(TARGET_WAITKIND_LOADED);
+      CASE(TARGET_WAITKIND_FORKED);
+      CASE(TARGET_WAITKIND_VFORKED);
+      CASE(TARGET_WAITKIND_EXECD);
+      CASE(TARGET_WAITKIND_VFORK_DONE);
+      CASE(TARGET_WAITKIND_SYSCALL_ENTRY);
+      CASE(TARGET_WAITKIND_SYSCALL_RETURN);
+      CASE(TARGET_WAITKIND_IGNORE);
+      CASE(TARGET_WAITKIND_NO_HISTORY);
+      CASE(TARGET_WAITKIND_NO_RESUMED);
+      CASE(TARGET_WAITKIND_THREAD_CREATED);
+      CASE(TARGET_WAITKIND_THREAD_EXITED);
     }
 #undef CASE
 
@@ -190,23 +319,77 @@ ptrace_request_to_str (int request)
    ptrace calls if debug traces are activated.  */
 
 static int
-netbsd_ptrace (int request, ptid_t ptid, int addr, int data, int addr2)
+netbsd_ptrace (int request, pid_t ptid, void *addr, int data)
 {
   int result;
-  const int pid = netbsd_ptrace_pid_from_ptid (ptid);
   int saved_errno;
 
-  if (debug_threads)
-    fprintf (stderr, "PTRACE (%s, pid=%d(pid=%d, tid=%d), addr=0x%x, "
-             "data=0x%x, addr2=0x%x)",
-             ptrace_request_to_str (request), pid, PIDGET (pid), TIDGET (pid),
-             addr, data, addr2);
-  result = ptrace (request, pid, addr, data, addr2);
+  netbsd_debug ("PTRACE (%s, pid=%d, addr=%p, data=%#x)\n",
+              ptrace_request_to_str (request), pid, addr, data);
+
+  if (request == PT_IO)
+    {
+      struct ptrace_io_desc *pio = (struct ptrace_io_desc *)addr;
+      netbsd_debug (":: { .piod_op=%s, .piod_offs=%p, .piod_addr=%p, "
+                    ".piod_len=%zu }\n",
+                    ptrace_ptio_request_to_str (pio->piod_op),
+                    pio->piod_offs, pio->piod_addr, pio->piod_len);
+      if (pio->piod_op == PT_WRITE_I || pio->piod_op == PT_WRITE_D)
+        {
+          for (size_t i = 0; i < pio->piod_len; i++)
+            netbsd_debug (" :: [%02zu] = %#02x\n", i,
+			  (unsigned char)((char *)pio->piod_addr)[i]);
+        }
+    }
+
   saved_errno = errno;
-  if (debug_threads)
-    fprintf (stderr, " -> %d (=0x%x)\n", result, result);
+  errno = 0;
+  result = ptrace (request, pid, addr, data);
+
+  netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
+  if (request == PT_IO)
+    {
+      struct ptrace_io_desc *pio = (struct ptrace_io_desc *)addr;
+      netbsd_debug (" -> :: { .piod_op=%s, .piod_offs=%p, .piod_addr=%p, "
+                    ".piod_len=%zu }\n",
+                    ptrace_ptio_request_to_str (pio->piod_op),
+                    pio->piod_offs, pio->piod_addr, pio->piod_len);
+      if (pio->piod_op == PT_READ_I || pio->piod_op == PT_READ_D)
+        {
+          for (size_t i = 0; i < pio->piod_len; i++)
+            netbsd_debug (" :: [%02zu] = %#02x\n", i,
+			  (unsigned char)((char *)pio->piod_addr)[i]);
+        }
+    }
 
   errno = saved_errno;
+  return result;
+}
+
+/* A wrapper around ptrace that allows us to print debug traces of
+   ptrace calls if debug traces are activated.  */
+
+static int
+netbsd_sysctl (const int *name, u_int namelen, void *oldp, size_t *oldlenp,
+  const void *newp, size_t newlen)
+{
+  int result;
+
+  gdb_assert(name);
+  gdb_assert(namelen > 0);
+
+  std::string str = "[" + std::to_string(name[0]);
+  for (u_int i = 1; i < namelen; i++)
+    str += ", " + std::to_string(name[i]);
+  str += "]";
+
+  netbsd_debug ("SYSCTL (name=%s, namelen=%u, oldp=%p, oldlenp=%p, newp=%p, "
+                "newlen=%zu)\n",
+                str.c_str(), namelen, oldp, oldlenp, newp, newlen);
+  result = sysctl(name, namelen, oldp, oldlenp, newp, newlen);
+
+  netbsd_debug (" -> %d (=%#x errno=%d)\n", result, result, errno);
+
   return result;
 }
 
@@ -226,24 +409,38 @@ netbsd_add_process (int pid, int attached)
   return proc;
 }
 
+
+
 /* Callback used by fork_inferior to start tracing the inferior.  */
 
 static void
 netbsd_ptrace_fun ()
 {
-  int pgrp;
-
   /* Switch child to its own process group so that signals won't
      directly affect GDBserver. */
-  pgrp = getpid();
-  if (pgrp < 0)
-    trace_start_error_with_name ("pgrp");
-  if (setpgid (0, pgrp) < 0)
+  if (setpgid (0, 0) < 0)
     trace_start_error_with_name ("setpgid");
-  if (ioctl (0, TIOCSPGRP, &pgrp) < 0)
-    trace_start_error_with_name ("ioctl");
-  if (netbsd_ptrace (PTRACE_TRACEME, null_ptid, 0, 0, 0) < 0)
+
+  if (netbsd_ptrace (PT_TRACE_ME, 0, NULL, 0) < 0)
     trace_start_error_with_name ("netbsd_ptrace");
+
+  /* If GDBserver is connected to gdb via stdio, redirect the inferior's
+     stdout to stderr so that inferior i/o doesn't corrupt the connection.
+     Also, redirect stdin to /dev/null.  */
+  if (remote_connection_is_stdio ())
+    {
+      if (close (0) < 0)
+        trace_start_error_with_name ("close");
+      if (open ("/dev/null", O_RDONLY) < 0)
+        trace_start_error_with_name ("open");
+      if (dup2 (2, 1) < 0)
+        trace_start_error_with_name ("dup2");
+      if (write (2, "stdin/stdout redirected\n",
+                 sizeof ("stdin/stdout redirected\n") - 1) < 0)
+        {
+          /* Errors ignored.  */;
+        }
+    }  
 }
 
 /* Implement the create_inferior method of the target_ops vector.  */
