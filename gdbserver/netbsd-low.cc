@@ -66,7 +66,7 @@ netbsd_debug (char *string, ...)
 
 /* Return a string image of the ptrace REQUEST number.  */
 
-static char *
+static const char *
 ptrace_request_to_str (int request)
 {
 #define CASE(X) case X: return #X
@@ -125,7 +125,7 @@ ptrace_request_to_str (int request)
 #ifdef PT_CLEARSTEP
       CASE(PT_CLEARSTEP);
 #endif
-#fidef PT_GETXSTATE
+#ifdef PT_GETXSTATE
       CASE(PT_GETXSTATE);
 #endif
 #ifdef PT_SETXSTATE
