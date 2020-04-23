@@ -35,7 +35,7 @@ srv_linux_obj="linux-low.o nat/linux-osdata.o nat/linux-procfs.o nat/linux-ptrac
 
 # NetBSD object files.  This is so we don't have to repeat
 # these files over and over again.
-srv_netbsd_obj="netbsd-low.o fork-child.o fork-inferior.o nat/fork-inferior.o"
+srv_netbsd_obj="netbsd-low.o fork-child.o nat/fork-inferior.o"
 
 # Input is taken from the "${host}" and "${target}" variables.
 
