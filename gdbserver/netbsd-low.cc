@@ -667,6 +667,22 @@ netbsd_process_target::create_inferior (const char *program,
   return pid;
 }
 
+static char *
+pid_to_exec_file (pid_t pid)
+{
+  static const int name[] = {
+    CTL_KERN, KERN_PROC_ARGS, pid, KERN_PROC_PATHNAME,
+  };
+  static char path[MAXPATHLEN];
+  size_t len;
+
+  len = sizeof(path);
+  if (netbsd_sysctl (name, __arraycount(name), path, &len, NULL, 0) == -1)
+    return NULL;
+
+  return path;
+}
+
 int
 netbsd_process_target::qxfer_siginfo (const char *annex, unsigned char *readbuf,
                      unsigned const char *writebuf, CORE_ADDR offset, int len)
@@ -807,7 +823,7 @@ get_phdr_phnum_from_proc_auxv (const int pid, const int is_elf64,
 /* Return &_DYNAMIC (via PT_DYNAMIC) in the inferior, or 0 if not present.  */
 
 static CORE_ADDR
-get_dynamic (const int pid, const int is_elf64)
+get_dynamic (netbsd_process_target *target, const int pid, const int is_elf64)
 {
   CORE_ADDR phdr_memaddr, relocation;
   int num_phdr, i;
@@ -820,7 +836,7 @@ get_dynamic (const int pid, const int is_elf64)
   gdb_assert (num_phdr < 100);  /* Basic sanity check.  */
   phdr_buf = (unsigned char *) alloca (num_phdr * phdr_size);
 
-  if (netbsd_read_memory (phdr_memaddr, phdr_buf, num_phdr * phdr_size))
+  if (target->read_memory (phdr_memaddr, phdr_buf, num_phdr * phdr_size))
     return 0;
 
   /* Compute relocation: it is expected to be 0 for "regular" executables,
@@ -884,18 +900,18 @@ get_dynamic (const int pid, const int is_elf64)
    DT_DEBUG, although they sometimes contain an unused DT_DEBUG entry too.  */
 
 static CORE_ADDR
-get_r_debug (const int pid, const int is_elf64)
+get_r_debug (netbsd_process_target *target, const int pid, const int is_elf64)
 {
   CORE_ADDR dynamic_memaddr;
   const int dyn_size = is_elf64 ? sizeof (Elf64_Dyn) : sizeof (Elf32_Dyn);
   unsigned char buf[sizeof (Elf64_Dyn)];  /* The larger of the two.  */
   CORE_ADDR map = -1;
 
-  dynamic_memaddr = get_dynamic (pid, is_elf64);
+  dynamic_memaddr = get_dynamic (target, pid, is_elf64);
   if (dynamic_memaddr == 0)
     return map;
 
-  while (netbsd_read_memory (dynamic_memaddr, buf, dyn_size) == 0)
+  while (target->read_memory (dynamic_memaddr, buf, dyn_size) == 0)
     {
       if (is_elf64)
         {
@@ -911,8 +927,8 @@ get_r_debug (const int pid, const int is_elf64)
 #ifdef DT_MIPS_RLD_MAP
           if (dyn->d_tag == DT_MIPS_RLD_MAP)
             {
-              if (netbsd_read_memory (dyn->d_un.d_val,
-                                     rld_map.buf, sizeof (rld_map.buf)) == 0)
+              if (target->read_memory (dyn->d_un.d_val,
+				       rld_map.buf, sizeof (rld_map.buf)) == 0)
                 return rld_map.map;
               else
                 break;
@@ -921,7 +937,7 @@ get_r_debug (const int pid, const int is_elf64)
 #ifdef DT_MIPS_RLD_MAP_REL
           if (dyn->d_tag == DT_MIPS_RLD_MAP_REL)
             {
-              if (netbsd_read_memory (dyn->d_un.d_val + dynamic_memaddr,
+              if (target->read_memory (dyn->d_un.d_val + dynamic_memaddr,
                                      rld_map.buf, sizeof (rld_map.buf)) == 0)
                 return rld_map.map;
               else
@@ -949,7 +965,7 @@ get_r_debug (const int pid, const int is_elf64)
 #ifdef DT_MIPS_RLD_MAP
           if (dyn->d_tag == DT_MIPS_RLD_MAP)
             {
-              if (netbsd_read_memory (dyn->d_un.d_val,
+              if (target->read_memory (dyn->d_un.d_val,
                                      rld_map.buf, sizeof (rld_map.buf)) == 0)
                 return rld_map.map;
               else
@@ -959,7 +975,7 @@ get_r_debug (const int pid, const int is_elf64)
 #ifdef DT_MIPS_RLD_MAP_REL
           if (dyn->d_tag == DT_MIPS_RLD_MAP_REL)
             {
-              if (netbsd_read_memory (dyn->d_un.d_val + dynamic_memaddr,
+              if (target->read_memory (dyn->d_un.d_val + dynamic_memaddr,
                                      rld_map.buf, sizeof (rld_map.buf)) == 0)
                 return rld_map.map;
               else
@@ -983,7 +999,7 @@ get_r_debug (const int pid, const int is_elf64)
 /* Read one pointer from MEMADDR in the inferior.  */
 
 static int
-read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr, int ptr_size)
+read_one_ptr (netbsd_process_target *target, CORE_ADDR memaddr, CORE_ADDR *ptr, int ptr_size)
 {
   int ret;
 
@@ -999,7 +1015,7 @@ read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr, int ptr_size)
     unsigned char uc;
   } addr;
 
-  ret = netbsd_read_memory (memaddr, &addr.uc, ptr_size);
+  ret = target->read_memory (memaddr, &addr.uc, ptr_size);
   if (ret == 0)
     {
       if (ptr_size == sizeof (CORE_ADDR))
@@ -1168,7 +1184,7 @@ netbsd_process_target::qxfer_libraries_svr4 (const char *annex,
       int r_version = 0;
 
       if (priv->r_debug == 0)
-        priv->r_debug = get_r_debug (pid, is_elf64);
+        priv->r_debug = get_r_debug (this, pid, is_elf64);
 
       /* We failed to find DT_DEBUG.  Such situation will not change
          for this inferior - do not retry it.  Report it to GDB as
@@ -1178,14 +1194,14 @@ netbsd_process_target::qxfer_libraries_svr4 (const char *annex,
 
       if (priv->r_debug != 0)
         {
-          if (netbsd_read_memory (priv->r_debug + lmo->r_version_offset,
+          if (read_memory (priv->r_debug + lmo->r_version_offset,
                                  (unsigned char *) &r_version,
                                  sizeof (r_version)) != 0
               || r_version != 1)
             {
               warning ("unexpected r_debug version %d", r_version);
             }
-          else if (read_one_ptr (priv->r_debug + lmo->r_map_offset,
+          else if (read_one_ptr (this, priv->r_debug + lmo->r_map_offset,
                                  &lm_addr, ptr_size) != 0)
             {
               warning ("unable to read r_map from 0x%lx",
@@ -1230,7 +1246,7 @@ netbsd_process_target::qxfer_libraries_svr4 (const char *annex,
           /* Not checking for error because reading may stop before
              we've got PATH_MAX worth of characters.  */
           libname[0] = '\0';
-          netbsd_read_memory (l_name, libname, sizeof (libname) - 1);
+          read_memory (l_name, libname, sizeof (libname) - 1);
           libname[sizeof (libname) - 1] = '\0';
           if (libname[0] != '\0')
             {
@@ -1358,22 +1374,6 @@ netbsd_process_target::resume (thread_resume *resume_info, size_t n)
   netbsd_ptrace (PT_CONTINUE, ptid.pid(), (void *)1, signal);
   if (errno)
     perror_with_name ("ptrace");
-}
-
-static char *
-pid_to_exec_file (pid_t pid)
-{
-  static const int name[] = {
-    CTL_KERN, KERN_PROC_ARGS, pid, KERN_PROC_PATHNAME,
-  };
-  static char path[MAXPATHLEN];
-  size_t len;
-
-  len = sizeof(path);
-  if (netbsd_sysctl (name, __arraycount(name), path, &len, NULL, 0) == -1)
-    return NULL;
-
-  return path;
 }
 
 static void
@@ -1922,7 +1922,7 @@ netbsd_process_target::remove_point (enum raw_bkpt_type type, CORE_ADDR addr,
     }
 }
 
-int
+bool
 netbsd_process_target::supports_z_point_type (char z_type)
 {
   netbsd_debug ("%s(z_type='%c')\n", __func__, z_type);

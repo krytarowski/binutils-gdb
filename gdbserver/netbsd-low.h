@@ -127,6 +127,10 @@ public:
   int insert_point (enum raw_bkpt_type type, CORE_ADDR addr, int size, struct raw_breakpoint *bp) override;
 
   int remove_point (enum raw_bkpt_type type, CORE_ADDR addr, int size, raw_breakpoint *bp) override;
+
+  int qxfer_siginfo(const char*, unsigned char*, const unsigned char*, CORE_ADDR, int) override;
+
+  int qxfer_libraries_svr4(const char*, unsigned char*, const unsigned char*, CORE_ADDR, int) override;
 };
 
 /* The inferior's target description.  This is a global because the
