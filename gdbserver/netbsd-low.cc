@@ -325,7 +325,7 @@ netbsd_ptrace (int request, pid_t pid, void *addr, int data)
   int saved_errno;
 
   netbsd_debug ("PTRACE (%s, pid=%d, addr=%p, data=%#x)\n",
-		"" /*(std::string(ptrace_request_to_str (request)).c_str()*/, pid, addr, data);
+		ptrace_request_to_str (request), pid, addr, data);
 
   if (request == PT_IO)
     {
@@ -772,6 +772,7 @@ netbsd_process_target::resume (thread_resume *resume_info, size_t n)
     perror_with_name ("ptrace");
 }
 
+#if 0
 static char *
 pid_to_exec_file (pid_t pid)
 {
@@ -787,6 +788,7 @@ pid_to_exec_file (pid_t pid)
 
   return path;
 }
+#endif
 
 static void
 netbsd_enable_event_reporting (pid_t pid)
@@ -1270,7 +1272,7 @@ netbsd_process_target::request_interrupt ()
 {
   ptid_t inferior_ptid = ptid_of (get_first_thread ());
 
-  kill (inferior_ptid.pid() SIGINT);
+  ::kill (inferior_ptid.pid(), SIGINT);
 }
 
 bool
