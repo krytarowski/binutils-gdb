@@ -26,6 +26,16 @@
 
 static int use_xml;
 
+class x86_64_target : public netbsd_process_target
+{
+public:
+  void process_qsupported (char **features, int count) override;
+protected:
+  void low_arch_setup () override;
+private:
+  void update_xmltarget ();
+};
+
 /* The index of various registers inside the regcache.  */
 
 enum netbsd_x86_64_gdb_regnum
@@ -289,8 +299,8 @@ netbsd_x86_64_store_fpregset (struct regcache *regcache, const char *buf)
 
 /* Implements the netbsd_target_ops.arch_setup routine.  */
 
-static void
-netbsd_x86_64_arch_setup (void)
+void
+x86_64_target::arch_setup ()
 {
   struct target_desc *tdesc
     = amd64_create_target_description (X86_XSTATE_SSE_MASK, false, false, false);
@@ -303,8 +313,8 @@ netbsd_x86_64_arch_setup (void)
 /* Update all the target description of all processes; a new GDB
    connected, and it may or not support xml target descriptions.  */
 
-static void
-x86_64_netbsd_update_xmltarget (void)
+void
+x86_64_netbsd::update_xmltarget ()
 {
   struct thread_info *saved_thread = current_thread;
 
@@ -327,8 +337,8 @@ x86_64_netbsd_update_xmltarget (void)
 
 /* Process qSupported query, "xmlRegisters=". */
 
-static void
-netbsd_x86_64_process_qsupported (char **features, int count)
+void
+x86_64_netbsd::process_qsupported (char **features, int count)
 {
   int i;
 
@@ -373,11 +383,4 @@ struct netbsd_regset_info netbsd_target_regsets[] = {
 #endif
   /* End of list marker.  */
   {0, 0, -1, NULL, NULL }
-};
-
-/* The netbsd_target_ops vector for x86-netbsd.  */
-
-struct netbsd_target_ops the_low_target = {
-  netbsd_x86_64_arch_setup,
-  netbsd_x86_64_process_qsupported,
 };
