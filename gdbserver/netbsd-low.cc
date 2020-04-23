@@ -1213,15 +1213,15 @@ netbsd_process_target::qxfer_libraries_svr4 (const char *annex,
   std::string document = "<library-list-svr4 version=\"1.0\"";
 
   while (lm_addr
-         && read_one_ptr (lm_addr + lmo->l_name_offset,
+         && read_one_ptr (this, lm_addr + lmo->l_name_offset,
                           &l_name, ptr_size) == 0
-         && read_one_ptr (lm_addr + lmo->l_addr_offset,
+         && read_one_ptr (this, lm_addr + lmo->l_addr_offset,
                           &l_addr, ptr_size) == 0
-         && read_one_ptr (lm_addr + lmo->l_ld_offset,
+         && read_one_ptr (this, lm_addr + lmo->l_ld_offset,
                           &l_ld, ptr_size) == 0
-         && read_one_ptr (lm_addr + lmo->l_prev_offset,
+         && read_one_ptr (this, lm_addr + lmo->l_prev_offset,
                           &l_prev, ptr_size) == 0
-         && read_one_ptr (lm_addr + lmo->l_next_offset,
+         && read_one_ptr (this, lm_addr + lmo->l_next_offset,
                           &l_next, ptr_size) == 0)
     {
       unsigned char libname[PATH_MAX];
