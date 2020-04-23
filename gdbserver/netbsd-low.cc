@@ -1957,6 +1957,18 @@ netbsd_process_target::supports_hardware_single_step ()
   return true;
 }
 
+/* Accepts an integer PID; Returns true if the executable PID is                            
+   running is a 64-bit ELF file..  */
+
+int
+netbsd_pid_exe_is_elf_64_file (int pid, unsigned int *machine)
+{
+  char file[PATH_MAX];
+
+  sprintf (file, "/proc/%d/exe", pid);
+  return elf_64_file_p (file, machine);
+}
+
 /* The NetBSD target ops object.  */
 
 static netbsd_process_target the_netbsd_target;

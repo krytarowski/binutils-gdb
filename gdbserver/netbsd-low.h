@@ -139,4 +139,7 @@ public:
    NetBSD ports support neither bi-arch nor multi-process.  */
 extern const struct target_desc *netbsd_tdesc;
 
+int netbsd_pid_exe_is_elf_64_file (int pid, unsigned int *machine);
+
+
 #endif /* GDBSERVER_NETBSD_LOW_H */

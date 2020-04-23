@@ -31,7 +31,7 @@ class x86_64_netbsd : public netbsd_process_target
 public:
   void process_qsupported (char **features, int count) override;
 protected:
-  void low_arch_setup ();
+  void low_arch_setup () override;
 private:
   void update_xmltarget ();
 };
@@ -329,7 +329,7 @@ x86_64_netbsd::update_xmltarget ()
     /* Look up any thread of this process.  */
     current_thread = find_any_thread_of_pid (pid);
 
-    //    the_low_target.arch_setup ();
+    the_low_setup ();
   });
 
   current_thread = saved_thread;
@@ -384,3 +384,37 @@ struct netbsd_regset_info netbsd_target_regsets[] = {
   /* End of list marker.  */
   {0, 0, -1, NULL, NULL }
 };
+
+static const struct target_desc *
+x86_64_netbsd_read_description (void)
+{
+  unsigned int machine;
+  int is_elf64;
+  int tid;
+  struct regset_info *regset;
+
+  tid = lwpid_of (current_thread);
+
+  is_elf64 = netbsd_pid_exe_is_elf_64_file (tid, &machine);
+
+  if (sizeof (void *) == 4)
+    {
+      if (is_elf64 > 0)
+       error (_("Can't debug 64-bit process with 32-bit GDBserver"));
+#ifndef __x86_64__
+      else if (machine == EM_X86_64)
+       error (_("Can't debug x86-64 process with 32-bit GDBserver"));
+#endif
+    }
+
+
+  if (tdesc == NULL)
+    tdesc = amd64_netbsd_read_description (X86_XSTATE_SSE_MASK, !is_elf64);
+  return tdesc;
+}
+
+void
+x86_64_netbsd::low_arch_setup ()
+{
+  current_process ()->tdesc = x86_64_netbsd_read_description ();
+}
