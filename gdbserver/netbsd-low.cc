@@ -525,8 +525,8 @@ netbsd_process_target::thread_name (ptid_t ptid)
   return buf;
 }
 
-static int
-netbsd_process_target::supports_catch_syscall (void)
+bool
+netbsd_process_target::supports_catch_syscall ()
 {
   netbsd_debug ("%s()\n", __func__);
 
@@ -535,7 +535,7 @@ netbsd_process_target::supports_catch_syscall (void)
 
 /* Implementation of the target_ops method "sw_breakpoint_from_kind".  */
 
-static const gdb_byte *
+const gdb_byte *
 netbsd_process_target::sw_breakpoint_from_kind (int kind, int *size)
 {
   netbsd_debug ("%s(kind=%d)\n", __func__, kind);
@@ -552,8 +552,8 @@ netbsd_process_target::sw_breakpoint_from_kind (int kind, int *size)
 /* Implement the to_stopped_by_sw_breakpoint target_ops
    method.  */
 
-static int
-netbsd_process_target::stopped_by_sw_breakpoint (void)
+bool
+netbsd_process_target::stopped_by_sw_breakpoint ()
 {
   netbsd_debug ("%s()\n", __func__);
 
@@ -575,8 +575,8 @@ netbsd_process_target::stopped_by_sw_breakpoint (void)
 /* Implement the to_supports_stopped_by_sw_breakpoint target_ops
    method.  */
 
-static int
-netbsd_process_target::supports_stopped_by_sw_breakpoint (void)
+bool
+netbsd_process_target::supports_stopped_by_sw_breakpoint ()
 {
   netbsd_debug ("%s()\n", __func__);
 
@@ -585,32 +585,32 @@ netbsd_process_target::supports_stopped_by_sw_breakpoint (void)
 
 /* Check if exec events are supported.  */
 
-static int
-netbsd_process_target::supports_exec_events (void)
+bool
+netbsd_process_target::supports_exec_events ()
 {
   netbsd_debug ("%s()\n", __func__);
 
   return 1;
 }
 
-static int
-netbsd_process_target::supports_disable_randomization (void)
+bool
+netbsd_process_target::supports_disable_randomization ()
 {
   netbsd_debug ("%s()\n", __func__);
 
   return 0;
 }
 
-static int
-netbsd_process_target::supports_non_stop (void)
+bool
+netbsd_process_target::supports_non_stop ()
 {
   netbsd_debug ("%s()\n", __func__);
 
   return 0;
 }
 
-static int
-netbsd_process_target::supports_multi_process (void)
+bool
+netbsd_process_target::supports_multi_process ()
 {
   netbsd_debug ("%s()\n", __func__);
 
@@ -619,8 +619,8 @@ netbsd_process_target::supports_multi_process (void)
 
 /* Check if fork events are supported.  */
 
-static int
-netbsd_process_target::supports_fork_events (void)
+bool
+netbsd_process_target::supports_fork_events ()
 {
   netbsd_debug ("%s()\n", __func__);
 
@@ -629,8 +629,8 @@ netbsd_process_target::supports_fork_events (void)
 
 /* Check if vfork events are supported.  */
 
-static int
-netbsd_process_target::supports_vfork_events (void)
+bool
+netbsd_process_target::supports_vfork_events ()
 {
   netbsd_debug ("%s()\n", __func__);
 

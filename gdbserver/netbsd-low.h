@@ -95,6 +95,30 @@ public:
   const gdb_byte *sw_breakpoint_from_kind (int kind, int *size) override;
 
   const char *thread_name (ptid_t thread) override;
+
+  bool supports_catch_syscall () override;
+
+  bool stopped_by_sw_breakpoint () override;
+
+  bool supports_stopped_by_sw_breakpoint () override;
+
+  bool stopped_by_hw_breakpoint () override;
+
+  bool supports_stopped_by_hw_breakpoint () override;
+
+  bool stopped_by_watchpoint () override;
+
+  bool supports_exec_events () override;
+
+  bool supports_disable_randomization () override;
+
+  bool supports_non_stop () override;
+
+  bool supports_multi_process () override;
+
+  bool supports_fork_events () override;
+
+  bool supports_vfork_events () override;
 };
 
 /* The inferior's target description.  This is a global because the
