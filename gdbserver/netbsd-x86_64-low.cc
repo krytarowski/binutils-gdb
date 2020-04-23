@@ -26,12 +26,12 @@
 
 static int use_xml;
 
-class x86_64_target : public netbsd_process_target
+class x86_64_netbsd : public netbsd_process_target
 {
 public:
   void process_qsupported (char **features, int count) override;
 protected:
-  void low_arch_setup () override;
+  void low_arch_setup ();
 private:
   void update_xmltarget ();
 };
@@ -300,7 +300,7 @@ netbsd_x86_64_store_fpregset (struct regcache *regcache, const char *buf)
 /* Implements the netbsd_target_ops.arch_setup routine.  */
 
 void
-x86_64_target::arch_setup ()
+x86_64_netbsd::low_arch_setup ()
 {
   struct target_desc *tdesc
     = amd64_create_target_description (X86_XSTATE_SSE_MASK, false, false, false);
@@ -367,7 +367,7 @@ x86_64_netbsd::process_qsupported (char **features, int count)
           free (copy);
         }
     }
-  x86_64_netbsd_update_xmltarget ();
+  update_xmltarget ();
 }
 
 /* Description of all the x86-netbsd register sets.  */
