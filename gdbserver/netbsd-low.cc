@@ -45,6 +45,9 @@ struct process_info_private
   /* The PTID obtained from the last wait performed on this process.
      Initialized to null_ptid until the first wait is performed.  */
   ptid_t last_wait_event_ptid;
+
+  /* &_r_debug.  0 if not yet determined.  -1 if no PT_DYNAMIC in Phdrs.  */
+  CORE_ADDR r_debug;
 };
 
 /* Print a debug trace on standard output if debug_threads is set.  */
@@ -772,7 +775,6 @@ netbsd_process_target::resume (thread_resume *resume_info, size_t n)
     perror_with_name ("ptrace");
 }
 
-#if 0
 static char *
 pid_to_exec_file (pid_t pid)
 {
@@ -788,7 +790,6 @@ pid_to_exec_file (pid_t pid)
 
   return path;
 }
-#endif
 
 static void
 netbsd_enable_event_reporting (pid_t pid)
@@ -1087,7 +1088,7 @@ netbsd_process_target::detach (process_info *process)
 {
   pid_t pid = process->pid;
 
-  netbsd_ptrace (PT_DETACH, pid, NULL, 0);
+  netbsd_ptrace (PT_DETACH, pid, (void *)1, 0);
   mourn (process);
   return 0;
 }
