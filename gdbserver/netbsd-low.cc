@@ -1005,7 +1005,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                   ourstatus->kind = TARGET_WAITKIND_VFORK_DONE;
                   break;
                 case PTRACE_LWP_CREATE:
-                  wptid = netbsd_ptid_t (wpid, pst.pe_lwp);
+                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
                   if (!find_thread_ptid (wptid))
                     {
                       add_thread (wptid, NULL);
@@ -1013,7 +1013,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                   ourstatus->kind = TARGET_WAITKIND_THREAD_CREATED;
                   break;
                 case PTRACE_LWP_EXIT:
-                  wptid = netbsd_ptid_t (wpid, pst.pe_lwp);
+                  wptid = ptid_t (wpid, pst.pe_lwp, 0);
                   thread_info *thread = find_thread_ptid (wptid);
                   if (!thread)
                     {
@@ -1073,7 +1073,7 @@ netbsd_process_target::kill (process_info *process)
   struct target_waitstatus status;
 
   netbsd_ptrace (PT_KILL, pid, NULL, 0);
-  netbsd_wait (ptid, &status, 0);
+  this->wait (ptid, &status, 0);
   mourn (process);
   return 0;
 }
@@ -1084,7 +1084,6 @@ int
 netbsd_process_target::detach (process_info *process)
 {
   pid_t pid = process->pid;
-  ptid_t ptid = ptid_t (pid, 0, 0);
 
   netbsd_ptrace (PT_DETACH, pid, NULL, 0);
   mourn (process);
@@ -1139,8 +1138,8 @@ netbsd_process_target::fetch_registers (regcache *regcache, int regno)
       char *buf;
       int res;
 
-      buf = xmalloc (regset->size);
-      res = netbsd_ptrace (regset->get_request, inferior_ptid, (int) buf, 0, 0);
+      buf = (char *) xmalloc (regset->size);
+      res = netbsd_ptrace (regset->get_request, inferior_ptid.pid(), buf, 0);
       if (res < 0)
         perror ("ptrace");
       regset->store_function (regcache, buf);
@@ -1164,7 +1163,7 @@ netbsd_process_target::store_registers (regcache *regcache, int regno)
       char *buf;
       int res;
 
-      buf = xmalloc (regset->size);
+      buf = (char*) xmalloc (regset->size);
       res = netbsd_ptrace (regset->get_request, inferior_ptid.pid (), buf, inferior_ptid.lwp ());
       if (res == 0)
         {
@@ -1185,32 +1184,39 @@ netbsd_process_target::store_registers (regcache *regcache, int regno)
 
 int
 netbsd_process_target::read_memory (CORE_ADDR memaddr, unsigned char *myaddr,
-				  int len)
+				  int size)
 {
-  /* On NetBSD, memory reads needs to be performed in chunks the size
-     of int types, and they should also be aligned accordingly.  */
-  int buf;
-  const int xfer_size = sizeof (buf);
-  CORE_ADDR addr = memaddr & -(CORE_ADDR) xfer_size;
+  netbsd_debug ("%s(memaddr=%p, myaddr=%p, size=%d)\n",
+                __func__, memaddr, myaddr, size);
+
+  struct ptrace_io_desc io;
+  io.piod_op = PIOD_READ_D;
+  io.piod_len = size;
+
   ptid_t inferior_ptid = ptid_of (current_thread);
 
-  while (addr < memaddr + len)
-    {
-      int skip = 0;
-      int truncate = 0;
+  int bytes_read = 0;
 
-      errno = 0;
-      if (addr < memaddr)
-        skip = memaddr - addr;
-      if (addr + xfer_size > memaddr + len)
-        truncate = addr + xfer_size - memaddr - len;
-      buf = netbsd_ptrace (PTRACE_PEEKTEXT, inferior_ptid, addr, 0, 0);
-      if (errno)
-        return errno;
-      memcpy (myaddr + (addr - memaddr) + skip, (gdb_byte *) &buf + skip,
-              xfer_size - skip - truncate);
-      addr += xfer_size;
+  if (size == 0)
+    {
+      /* Zero length write always succeeds.  */
+      return 0;
     }
+  do
+    {
+      io.piod_offs = (void *)(memaddr + bytes_read);
+      io.piod_addr = myaddr + bytes_read;
+
+      int rv = netbsd_ptrace (PT_IO, inferior_ptid.pid(), &io, 0);
+      if (rv == -1)
+        return errno;
+      if (io.piod_len == 0)
+        return 0;
+
+      bytes_read += io.piod_len;
+      io.piod_len = size - bytes_read;
+    }
+  while (bytes_read < size);
 
   return 0;
 }
@@ -1219,40 +1225,40 @@ netbsd_process_target::read_memory (CORE_ADDR memaddr, unsigned char *myaddr,
 
 int
 netbsd_process_target::write_memory (CORE_ADDR memaddr,
-				   const unsigned char *myaddr, int len)
+				   const unsigned char *myaddr, int size)
 {
-  /* On NetBSD, memory writes needs to be performed in chunks the size
-     of int types, and they should also be aligned accordingly.  */
-  int buf;
-  const int xfer_size = sizeof (buf);
-  CORE_ADDR addr = memaddr & -(CORE_ADDR) xfer_size;
+  netbsd_debug ("%s(memaddr=%p, myaddr=%p, size=%d)\n",
+                __func__, memaddr, myaddr, size);
+
+  struct ptrace_io_desc io;
+  io.piod_op = PIOD_WRITE_D;
+  io.piod_len = size;
+
   ptid_t inferior_ptid = ptid_of (current_thread);
 
-  while (addr < memaddr + len)
-    {
-      int skip = 0;
-      int truncate = 0;
+  int bytes_written = 0;
 
-      if (addr < memaddr)
-        skip = memaddr - addr;
-      if (addr + xfer_size > memaddr + len)
-        truncate = addr + xfer_size - memaddr - len;
-      if (skip > 0 || truncate > 0)
-	{
-	  /* We need to read the memory at this address in order to preserve
-	     the data that we are not overwriting.  */
-	  read_memory (addr, (unsigned char *) &buf, xfer_size);
-	  if (errno)
-	    return errno;
-	}
-      memcpy ((gdb_byte *) &buf + skip, myaddr + (addr - memaddr) + skip,
-              xfer_size - skip - truncate);
-      errno = 0;
-      netbsd_ptrace (PTRACE_POKETEXT, inferior_ptid, addr, buf, 0);
-      if (errno)
-        return errno;
-      addr += xfer_size;
+  if (size == 0)
+    {
+      /* Zero length write always succeeds.  */
+      return 0;
     }
+
+  do
+    {
+      io.piod_addr = (void *)(myaddr + bytes_written);
+      io.piod_offs = (void *)(memaddr + bytes_written);
+
+      int rv = netbsd_ptrace (PT_IO, inferior_ptid.pid(), &io, 0);
+      if (rv == -1)
+        return errno;
+      if (io.piod_len == 0)
+        return 0;
+
+      bytes_written += io.piod_len;
+      io.piod_len = size - bytes_written;
+    }
+  while (bytes_written < size);
 
   return 0;
 }
@@ -1264,19 +1270,13 @@ netbsd_process_target::request_interrupt ()
 {
   ptid_t inferior_ptid = ptid_of (get_first_thread ());
 
-  kill (netbsd_ptid_get_pid (inferior_ptid), SIGINT);
+  kill (inferior_ptid.pid() SIGINT);
 }
 
 bool
 netbsd_process_target::supports_hardware_single_step ()
 {
   return true;
-}
-
-const gdb_byte *
-netbsd_process_target::sw_breakpoint_from_kind (int kind, int *size)
-{
-  error (_("Target does not implement the sw_breakpoint_from_kind op"));
 }
 
 /* The NetBSD target ops object.  */
