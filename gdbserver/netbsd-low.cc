@@ -583,7 +583,7 @@ netbsd_process_target::supports_stopped_by_sw_breakpoint ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 1;
+  return true;
 }
 
 /* Check if exec events are supported.  */
@@ -593,7 +593,7 @@ netbsd_process_target::supports_exec_events ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 1;
+  return true;
 }
 
 bool
@@ -601,7 +601,7 @@ netbsd_process_target::supports_disable_randomization ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 0;
+  return false;
 }
 
 bool
@@ -609,7 +609,7 @@ netbsd_process_target::supports_non_stop ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 0;
+  return false;
 }
 
 bool
@@ -617,7 +617,7 @@ netbsd_process_target::supports_multi_process ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 0; /* XXX */
+  return false; /* XXX */
 }
 
 /* Check if fork events are supported.  */
@@ -627,7 +627,7 @@ netbsd_process_target::supports_fork_events ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 1;
+  return true;
 }
 
 /* Check if vfork events are supported.  */
@@ -637,7 +637,7 @@ netbsd_process_target::supports_vfork_events ()
 {
   netbsd_debug ("%s()\n", __func__);
 
-  return 1;
+  return true;
 }
 
 /* Implement the create_inferior method of the target_ops vector.  */
@@ -1274,6 +1274,87 @@ netbsd_process_target::request_interrupt ()
   ptid_t inferior_ptid = ptid_of (get_first_thread ());
 
   ::kill (inferior_ptid.pid(), SIGINT);
+}
+
+/* Copy LEN bytes from inferior's auxiliary vector starting at OFFSET
+   to debugger memory starting at MYADDR.  */
+
+int
+netbsd_process_target::read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len)
+{
+  netbsd_debug ("%s(offset=%p, myaddr=%p, size=%u)\n",
+                __func__, offset, myaddr, len);
+
+  struct ptrace_io_desc pio;
+  pid_t pid = pid_of (current_thread);
+
+  pio.piod_op = PIOD_READ_AUXV;
+  pio.piod_offs = (void *)(intptr_t)offset;
+  pio.piod_addr = myaddr;
+  pio.piod_len = len;
+
+  if (netbsd_ptrace (PT_IO, pid, &pio, 0) == -1)
+    return 0;
+
+  return pio.piod_len;
+}
+
+int
+netbsd_process_target::insert_point (enum raw_bkpt_type type, CORE_ADDR addr,
+                     int size, struct raw_breakpoint *bp)
+{
+  netbsd_debug ("%s type:%#x addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
+
+  switch (type)
+    {
+    case raw_bkpt_type_sw:
+      return insert_memory_breakpoint (bp);
+    case raw_bkpt_type_hw:
+    case raw_bkpt_type_write_wp:
+    case raw_bkpt_type_read_wp:
+    case raw_bkpt_type_access_wp:
+    default:
+      return 1; /* Not supported.  */
+    }
+}
+
+int
+netbsd_process_target::remove_point (enum raw_bkpt_type type, CORE_ADDR addr,
+                     int size, struct raw_breakpoint *bp)
+{
+  netbsd_debug ("%s type:%c addr: 0x%08lx len:%d\n", __func__, (int)type, addr, size);
+
+  switch (type)
+    {
+    case raw_bkpt_type_sw:
+      return remove_memory_breakpoint (bp);
+    case raw_bkpt_type_hw:
+    case raw_bkpt_type_write_wp:
+    case raw_bkpt_type_read_wp:
+    case raw_bkpt_type_access_wp:
+    default:
+      return 1; /* Not supported.  */
+    }
+}
+
+int
+netbsd_process_target::supports_z_point_type (char z_type)
+{
+  netbsd_debug ("%s(z_type='%c')\n", __func__, z_type);
+
+  switch (z_type)
+    {
+    case Z_PACKET_SW_BP:
+#if 0
+    case Z_PACKET_HW_BP:
+    case Z_PACKET_WRITE_WP:
+    case Z_PACKET_READ_WP:
+    case Z_PACKET_ACCESS_WP:
+#endif
+      return 1;
+    default:
+      return 0;
+    }
 }
 
 bool

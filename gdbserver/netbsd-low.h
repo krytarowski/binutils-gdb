@@ -119,6 +119,14 @@ public:
   bool supports_fork_events () override;
 
   bool supports_vfork_events () override;
+
+  int read_auxv (CORE_ADDR offset, unsigned char *myaddr, unsigned int len) override;
+
+  bool supports_z_point_type (char z_type) override;
+
+  int insert_point (enum raw_bkpt_type type, CORE_ADDR addr, int size, struct raw_breakpoint *bp) override;
+
+  int remove_point (enum raw_bkpt_type type, CORE_ADDR addr, int size, raw_breakpoint *bp) override;
 };
 
 /* The inferior's target description.  This is a global because the
