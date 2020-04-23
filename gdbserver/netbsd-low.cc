@@ -670,13 +670,13 @@ netbsd_process_target::create_inferior (const char *program,
 static void
 netbsd_add_threads_after_attach (int pid)
 {
-  struct ptrace_lwpinfo pl;
+  struct ptrace_lwpstatus pl;
 
   pl.pl_lwpid = 0;
-  while (netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
+  while (netbsd_ptrace(PT_LWPNEXT, pid, (void *)&pl, sizeof(pl)) != -1 &&
     pl.pl_lwpid != 0)
     {
-      ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
+      ptid_t thread_ptid = ptid_t (pid, pl.pl_lwpid, 0);
 
       if (!find_thread_ptid (thread_ptid))
 	{
@@ -722,10 +722,10 @@ netbsd_process_target::resume (thread_resume *resume_info, size_t n)
     {
       if (n == 1)
         {
-          struct ptrace_lwpinfo pl;
+          struct ptrace_lwpstatus pl;
           int val;
           pl.pl_lwpid = 0;
-          while ((val = netbsd_ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl,
+          while ((val = netbsd_ptrace(PT_LWPNEXT, ptid.pid(), (void *)&pl,
             sizeof(pl))) != -1 && pl.pl_lwpid != 0)
            {
               if (pl.pl_lwpid == ptid.lwp())
@@ -742,10 +742,10 @@ netbsd_process_target::resume (thread_resume *resume_info, size_t n)
         }
       else
         {
-          struct ptrace_lwpinfo pl;
+          struct ptrace_lwpstatus pl;
           int val;
           pl.pl_lwpid = 0;
-          while ((val = netbsd_ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl,
+          while ((val = netbsd_ptrace(PT_LWPNEXT, ptid.pid(), (void *)&pl,
             sizeof(pl))) != -1 && pl.pl_lwpid != 0)
            {
               netbsd_ptrace (PT_SETSTEP, ptid.pid(), NULL, pl.pl_lwpid);
@@ -755,10 +755,10 @@ netbsd_process_target::resume (thread_resume *resume_info, size_t n)
     }
   else
     {
-      struct ptrace_lwpinfo pl;
+      struct ptrace_lwpstatus pl;
       int val;
       pl.pl_lwpid = 0;
-      while ((val = netbsd_ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
+      while ((val = netbsd_ptrace(PT_LWPNEXT, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
         pl.pl_lwpid != 0)
         {
           netbsd_ptrace (PT_CLEARSTEP, ptid.pid(), NULL, pl.pl_lwpid);
@@ -911,7 +911,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
           lwp = psi.psi_lwpid;
         }
 
-      ptid_t wptid = netbsd_ptid_t (wpid, lwp);
+      ptid_t wptid = ptid_t (wpid, lwp, 0);
 
       if (!find_thread_ptid (wptid))
         {
@@ -997,7 +997,7 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
                       return wptid;
                     }
 
-                  child_ptid = netbsd_ptid_t (child, child_psi.psi_lwpid);
+                  child_ptid = ptid_t (child, child_psi.psi_lwpid, 0);
                   netbsd_enable_event_reporting (child_ptid.pid ());
                   ourstatus->value.related_pid = child_ptid;
                   break;
