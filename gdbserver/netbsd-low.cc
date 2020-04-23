@@ -1476,10 +1476,17 @@ netbsd_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus, int target_opti
       proc = find_process_pid (wpid);
       if (proc->tdesc == NULL)
         {
+	  if (proc->attached)
+	    {
               /* This needs to happen after we have attached to the
                  inferior and it is stopped for the first time, but
                  before we access any inferior registers.  */
-              the_low_target.arch_setup ();
+	      //             arch_setup_thread ();
+	    }
+	  else
+	    {
+	      
+	    }
         }
       }
 
@@ -1958,6 +1965,6 @@ void
 initialize_low (void)
 {
   set_target_ops (&the_netbsd_target);
-  the_low_target.arch_setup ();
+  //  the_low_target.arch_setup ();
 }
 

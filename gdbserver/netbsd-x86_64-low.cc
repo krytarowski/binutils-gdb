@@ -329,7 +329,7 @@ x86_64_netbsd::update_xmltarget ()
     /* Look up any thread of this process.  */
     current_thread = find_any_thread_of_pid (pid);
 
-    the_low_target.arch_setup ();
+    //    the_low_target.arch_setup ();
   });
 
   current_thread = saved_thread;
