@@ -50,7 +50,7 @@ struct process_info_private
 /* Print a debug trace on standard output if debug_threads is set.  */
 
 static void
-netbsd_debug (char *string, ...)
+netbsd_debug (const char *string, ...)
 {
   va_list args;
 
@@ -319,13 +319,13 @@ netbsd_wait_kind_to_str (int kind)
    ptrace calls if debug traces are activated.  */
 
 static int
-netbsd_ptrace (int request, pid_t ptid, void *addr, int data)
+netbsd_ptrace (int request, pid_t pid, void *addr, int data)
 {
   int result;
   int saved_errno;
 
   netbsd_debug ("PTRACE (%s, pid=%d, addr=%p, data=%#x)\n",
-              ptrace_request_to_str (request), pid, addr, data);
+		"" /*(std::string(ptrace_request_to_str (request)).c_str()*/, pid, addr, data);
 
   if (request == PT_IO)
     {
@@ -472,7 +472,7 @@ netbsd_add_threads_sysctl (pid_t pid)
   nlwps = size / sizeof(struct kinfo_lwp);
 
   for (i = 0; i < nlwps; i++) {
-    ptid_t ptid = netbsd_ptid_t (pid, kl[i].l_lid);
+    ptid_t ptid = ptid_t (pid, kl[i].l_lid, 0);
     netbsd_debug ("Registering thread (pid=%d, lwpid=%d)\n", pid, kl[i].l_lid);
     add_thread (ptid, NULL);
   }
