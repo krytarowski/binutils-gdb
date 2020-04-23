@@ -102,11 +102,13 @@ public:
 
   bool supports_stopped_by_sw_breakpoint () override;
 
+#if 0
   bool stopped_by_hw_breakpoint () override;
 
   bool supports_stopped_by_hw_breakpoint () override;
 
   bool stopped_by_watchpoint () override;
+#endif
 
   bool supports_exec_events () override;
 
