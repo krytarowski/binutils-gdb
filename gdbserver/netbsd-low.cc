@@ -667,6 +667,7 @@ netbsd_process_target::create_inferior (const char *program,
   return pid;
 }
 
+#if 0
 static char *
 pid_to_exec_file (pid_t pid)
 {
@@ -682,6 +683,7 @@ pid_to_exec_file (pid_t pid)
 
   return path;
 }
+#endif
 
 int
 netbsd_process_target::qxfer_siginfo (const char *annex, unsigned char *readbuf,
