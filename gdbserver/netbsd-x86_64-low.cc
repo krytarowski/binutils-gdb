@@ -1,4 +1,4 @@
-/* Copyright (C) 2010-2020 Free Software Foundation, Inc.
+/* Copyright (C) 2010-2019 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,197 +16,152 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "server.h"
-#include "lynx-low.h"
+#include "netbsd-low.h"
 #include <limits.h>
 #include <sys/ptrace.h>
 #include "gdbsupport/x86-xstate.h"
-#include "arch/i386.h"
+#include "arch/amd64.h"
 #include "x86-tdesc.h"
+#include "tdesc.h"
 
-/* The following two typedefs are defined in a .h file which is not
-   in the standard include path (/sys/include/family/x86/ucontext.h),
-   so we just duplicate them here.
-
-   Unfortunately for us, the definition of this structure differs between
-   LynxOS 5.x and LynxOS 178.  Rather than duplicate the code, we use
-   different definitions depending on the target.  */
-
-#ifdef VMOS_DEV
-#define LYNXOS_178
-#endif
-
-/* General register context */
-typedef struct usr_econtext {
-
-    uint32_t    uec_fault;
-    uint32_t    uec_es;
-    uint32_t    uec_ds;
-    uint32_t    uec_edi;
-    uint32_t    uec_esi;
-    uint32_t    uec_ebp;
-    uint32_t    uec_temp;
-    uint32_t    uec_ebx;
-    uint32_t    uec_edx;
-    uint32_t    uec_ecx;
-    uint32_t    uec_eax;
-    uint32_t    uec_inum;
-    uint32_t    uec_ecode;
-    uint32_t    uec_eip;
-    uint32_t    uec_cs;
-    uint32_t    uec_eflags;
-    uint32_t    uec_esp;
-    uint32_t    uec_ss;
-    uint32_t    uec_fs;
-    uint32_t    uec_gs;
-} usr_econtext_t;
-
-#if defined(LYNXOS_178)
-
-/* Floating point register context                                                                                      */
-typedef struct usr_fcontext {
-        uint32_t         ufc_control;
-        uint32_t         ufc_status;
-        uint32_t         ufc_tag;
-        uint8_t         *ufc_inst_off;
-        uint32_t         ufc_inst_sel;
-        uint8_t         *ufc_data_off;
-        uint32_t         ufc_data_sel;
-        struct ufp387_real {
-                uint16_t        umant4;
-        uint16_t        umant3;
-        uint16_t        umant2;
-        uint16_t        umant1;
-        uint16_t        us_and_e;
-        } ufc_reg[8];
-} usr_fcontext_t;
-
-#else /* This is LynxOS 5.x.  */
-
-/* Floating point and SIMD register context */
-typedef struct usr_fcontext {
-        uint16_t         ufc_control;
-        uint16_t         ufc_status;
-        uint16_t         ufc_tag;
-        uint16_t         ufc_opcode;
-        uint8_t         *ufc_inst_off;
-        uint32_t         ufc_inst_sel;
-        uint8_t         *ufc_data_off;
-        uint32_t         ufc_data_sel;
-        uint32_t         usse_mxcsr;
-        uint32_t         usse_mxcsr_mask;
-        struct ufp387_real {
-                uint16_t umant4;
-                uint16_t umant3;
-                uint16_t umant2;
-                uint16_t umant1;
-                uint16_t us_and_e;
-                uint16_t ureserved_1;
-                uint16_t ureserved_2;
-                uint16_t ureserved_3;
-        } ufc_reg[8];
-        struct uxmm_register {
-                uint16_t uchunk_1;
-                uint16_t uchunk_2;
-                uint16_t uchunk_3;
-                uint16_t uchunk_4;
-                uint16_t uchunk_5;
-                uint16_t uchunk_6;
-                uint16_t uchunk_7;
-                uint16_t uchunk_8;
-        } uxmm_reg[8];
-        char ureserved[16][14];
-} usr_fcontext_t;
-
-#endif
+static int use_xml;
 
 /* The index of various registers inside the regcache.  */
 
-enum lynx_i386_gdb_regnum
+enum netbsd_x86_64_gdb_regnum
 {
-  I386_EAX_REGNUM,
-  I386_ECX_REGNUM,
-  I386_EDX_REGNUM,
-  I386_EBX_REGNUM,
-  I386_ESP_REGNUM,
-  I386_EBP_REGNUM,
-  I386_ESI_REGNUM,
-  I386_EDI_REGNUM,
-  I386_EIP_REGNUM,
-  I386_EFLAGS_REGNUM,
-  I386_CS_REGNUM,
-  I386_SS_REGNUM,
-  I386_DS_REGNUM,
-  I386_ES_REGNUM,
-  I386_FS_REGNUM,
-  I386_GS_REGNUM,
-  I386_ST0_REGNUM,
-  I386_FCTRL_REGNUM = I386_ST0_REGNUM + 8,
-  I386_FSTAT_REGNUM,
-  I386_FTAG_REGNUM,
-  I386_FISEG_REGNUM,
-  I386_FIOFF_REGNUM,
-  I386_FOSEG_REGNUM,
-  I386_FOOFF_REGNUM,
-  I386_FOP_REGNUM,
-  I386_XMM0_REGNUM = 32,
-  I386_MXCSR_REGNUM = I386_XMM0_REGNUM + 8,
-  I386_SENTINEL_REGUM
+  AMD64_RAX_REGNUM,             /* %rax */
+  AMD64_RBX_REGNUM,             /* %rbx */
+  AMD64_RCX_REGNUM,             /* %rcx */
+  AMD64_RDX_REGNUM,             /* %rdx */
+  AMD64_RSI_REGNUM,             /* %rsi */
+  AMD64_RDI_REGNUM,             /* %rdi */
+  AMD64_RBP_REGNUM,             /* %rbp */
+  AMD64_RSP_REGNUM,             /* %rsp */
+  AMD64_R8_REGNUM,              /* %r8 */
+  AMD64_R9_REGNUM,              /* %r9 */
+  AMD64_R10_REGNUM,             /* %r10 */
+  AMD64_R11_REGNUM,             /* %r11 */
+  AMD64_R12_REGNUM,             /* %r12 */
+  AMD64_R13_REGNUM,             /* %r13 */
+  AMD64_R14_REGNUM,             /* %r14 */
+  AMD64_R15_REGNUM,             /* %r15 */
+  AMD64_RIP_REGNUM,             /* %rip */
+  AMD64_EFLAGS_REGNUM,          /* %eflags */
+  AMD64_CS_REGNUM,              /* %cs */
+  AMD64_SS_REGNUM,              /* %ss */
+  AMD64_DS_REGNUM,              /* %ds */
+  AMD64_ES_REGNUM,              /* %es */
+  AMD64_FS_REGNUM,              /* %fs */
+  AMD64_GS_REGNUM,              /* %gs */
+  AMD64_ST0_REGNUM = 24,        /* %st0 */
+  AMD64_ST1_REGNUM,             /* %st1 */
+  AMD64_FCTRL_REGNUM = AMD64_ST0_REGNUM + 8,
+  AMD64_FSTAT_REGNUM = AMD64_ST0_REGNUM + 9,
+  AMD64_FTAG_REGNUM = AMD64_ST0_REGNUM + 10,
+  AMD64_XMM0_REGNUM = 40,       /* %xmm0 */
+  AMD64_XMM1_REGNUM,            /* %xmm1 */
+  AMD64_MXCSR_REGNUM = AMD64_XMM0_REGNUM + 16,
+  AMD64_YMM0H_REGNUM,           /* %ymm0h */
+  AMD64_YMM15H_REGNUM = AMD64_YMM0H_REGNUM + 15,
+  AMD64_BND0R_REGNUM = AMD64_YMM15H_REGNUM + 1,
+  AMD64_BND3R_REGNUM = AMD64_BND0R_REGNUM + 3,
+  AMD64_BNDCFGU_REGNUM,
+  AMD64_BNDSTATUS_REGNUM,
+  AMD64_XMM16_REGNUM,
+  AMD64_XMM31_REGNUM = AMD64_XMM16_REGNUM + 15,
+  AMD64_YMM16H_REGNUM,
+  AMD64_YMM31H_REGNUM = AMD64_YMM16H_REGNUM + 15,
+  AMD64_K0_REGNUM,
+  AMD64_K7_REGNUM = AMD64_K0_REGNUM + 7,
+  AMD64_ZMM0H_REGNUM,
+  AMD64_ZMM31H_REGNUM = AMD64_ZMM0H_REGNUM + 31,
+  AMD64_PKRU_REGNUM,
+  AMD64_FSBASE_REGNUM,
+  AMD64_GSBASE_REGNUM
 };
 
 /* The fill_function for the general-purpose register set.  */
 
 static void
-lynx_i386_fill_gregset (struct regcache *regcache, char *buf)
+netbsd_x86_64_fill_gregset (struct regcache *regcache, char *buf)
 {
-#define lynx_i386_collect_gp(regnum, fld) \
-  collect_register (regcache, regnum, \
-                    buf + offsetof (usr_econtext_t, uec_##fld))
+  struct reg *r;
 
-  lynx_i386_collect_gp (I386_EAX_REGNUM, eax);
-  lynx_i386_collect_gp (I386_ECX_REGNUM, ecx);
-  lynx_i386_collect_gp (I386_EDX_REGNUM, edx);
-  lynx_i386_collect_gp (I386_EBX_REGNUM, ebx);
-  lynx_i386_collect_gp (I386_ESP_REGNUM, esp);
-  lynx_i386_collect_gp (I386_EBP_REGNUM, ebp);
-  lynx_i386_collect_gp (I386_ESI_REGNUM, esi);
-  lynx_i386_collect_gp (I386_EDI_REGNUM, edi);
-  lynx_i386_collect_gp (I386_EIP_REGNUM, eip);
-  lynx_i386_collect_gp (I386_EFLAGS_REGNUM, eflags);
-  lynx_i386_collect_gp (I386_CS_REGNUM, cs);
-  lynx_i386_collect_gp (I386_SS_REGNUM, ss);
-  lynx_i386_collect_gp (I386_DS_REGNUM, ds);
-  lynx_i386_collect_gp (I386_ES_REGNUM, es);
-  lynx_i386_collect_gp (I386_FS_REGNUM, fs);
-  lynx_i386_collect_gp (I386_GS_REGNUM, gs);
+  r = (struct reg *)buf;
+
+#define netbsd_x86_64_collect_gp(regnum, fld) do { \
+  collect_register (regcache, regnum, &r->regs[_REG_##fld]); \
+  printf("collect_register(%p, %d, %p -> %lx)\n", regcache, regnum, &r->regs[_REG_##fld], r->regs[_REG_##fld]); \
+  } while (0)
+
+  netbsd_x86_64_collect_gp (AMD64_RAX_REGNUM, RAX);
+  netbsd_x86_64_collect_gp (AMD64_RBX_REGNUM, RBX);
+  netbsd_x86_64_collect_gp (AMD64_RCX_REGNUM, RCX);
+  netbsd_x86_64_collect_gp (AMD64_RDX_REGNUM, RDX);
+  netbsd_x86_64_collect_gp (AMD64_RSI_REGNUM, RSI);
+  netbsd_x86_64_collect_gp (AMD64_RDI_REGNUM, RDI);
+  netbsd_x86_64_collect_gp (AMD64_RBP_REGNUM, RBP);
+  netbsd_x86_64_collect_gp (AMD64_RSP_REGNUM, RSP);
+  netbsd_x86_64_collect_gp (AMD64_R8_REGNUM, R8);
+  netbsd_x86_64_collect_gp (AMD64_R9_REGNUM, R9);
+  netbsd_x86_64_collect_gp (AMD64_R10_REGNUM, R10);
+  netbsd_x86_64_collect_gp (AMD64_R11_REGNUM, R11);
+  netbsd_x86_64_collect_gp (AMD64_R12_REGNUM, R12);
+  netbsd_x86_64_collect_gp (AMD64_R13_REGNUM, R13);
+  netbsd_x86_64_collect_gp (AMD64_R14_REGNUM, R14);
+  netbsd_x86_64_collect_gp (AMD64_R15_REGNUM, R15);
+  netbsd_x86_64_collect_gp (AMD64_RIP_REGNUM, RIP);
+  netbsd_x86_64_collect_gp (AMD64_EFLAGS_REGNUM, RFLAGS);
+  netbsd_x86_64_collect_gp (AMD64_CS_REGNUM, CS);
+  netbsd_x86_64_collect_gp (AMD64_SS_REGNUM, SS);
+  netbsd_x86_64_collect_gp (AMD64_DS_REGNUM, DS);
+  netbsd_x86_64_collect_gp (AMD64_ES_REGNUM, ES);
+  netbsd_x86_64_collect_gp (AMD64_FS_REGNUM, FS);
+  netbsd_x86_64_collect_gp (AMD64_GS_REGNUM, GS);
 }
 
 /* The store_function for the general-purpose register set.  */
 
 static void
-lynx_i386_store_gregset (struct regcache *regcache, const char *buf)
+netbsd_x86_64_store_gregset (struct regcache *regcache, const char *buf)
 {
-#define lynx_i386_supply_gp(regnum, fld) \
-  supply_register (regcache, regnum, \
-                   buf + offsetof (usr_econtext_t, uec_##fld))
+  struct reg *r;
 
-  lynx_i386_supply_gp (I386_EAX_REGNUM, eax);
-  lynx_i386_supply_gp (I386_ECX_REGNUM, ecx);
-  lynx_i386_supply_gp (I386_EDX_REGNUM, edx);
-  lynx_i386_supply_gp (I386_EBX_REGNUM, ebx);
-  lynx_i386_supply_gp (I386_ESP_REGNUM, esp);
-  lynx_i386_supply_gp (I386_EBP_REGNUM, ebp);
-  lynx_i386_supply_gp (I386_ESI_REGNUM, esi);
-  lynx_i386_supply_gp (I386_EDI_REGNUM, edi);
-  lynx_i386_supply_gp (I386_EIP_REGNUM, eip);
-  lynx_i386_supply_gp (I386_EFLAGS_REGNUM, eflags);
-  lynx_i386_supply_gp (I386_CS_REGNUM, cs);
-  lynx_i386_supply_gp (I386_SS_REGNUM, ss);
-  lynx_i386_supply_gp (I386_DS_REGNUM, ds);
-  lynx_i386_supply_gp (I386_ES_REGNUM, es);
-  lynx_i386_supply_gp (I386_FS_REGNUM, fs);
-  lynx_i386_supply_gp (I386_GS_REGNUM, gs);
+  r = (struct reg *)buf;
+
+#define netbsd_x86_64_supply_gp(regnum, fld) do { \
+  supply_register (regcache, regnum, &r->regs[_REG_##fld]); \
+  printf("supply_register(%p, %d, %p -> %lx)\n", regcache, regnum, &r->regs[_REG_##fld], r->regs[_REG_##fld]); \
+  } while(0)
+
+  netbsd_x86_64_supply_gp (AMD64_RAX_REGNUM, RAX);
+  netbsd_x86_64_supply_gp (AMD64_RBX_REGNUM, RBX);
+  netbsd_x86_64_supply_gp (AMD64_RCX_REGNUM, RCX);
+  netbsd_x86_64_supply_gp (AMD64_RDX_REGNUM, RDX);
+  netbsd_x86_64_supply_gp (AMD64_RSI_REGNUM, RSI);
+  netbsd_x86_64_supply_gp (AMD64_RDI_REGNUM, RDI);
+  netbsd_x86_64_supply_gp (AMD64_RBP_REGNUM, RBP);
+  netbsd_x86_64_supply_gp (AMD64_RSP_REGNUM, RSP);
+  netbsd_x86_64_supply_gp (AMD64_R8_REGNUM, R8);
+  netbsd_x86_64_supply_gp (AMD64_R9_REGNUM, R9);
+  netbsd_x86_64_supply_gp (AMD64_R10_REGNUM, R10);
+  netbsd_x86_64_supply_gp (AMD64_R11_REGNUM, R11);
+  netbsd_x86_64_supply_gp (AMD64_R12_REGNUM, R12);
+  netbsd_x86_64_supply_gp (AMD64_R13_REGNUM, R13);
+  netbsd_x86_64_supply_gp (AMD64_R14_REGNUM, R14);
+  netbsd_x86_64_supply_gp (AMD64_R15_REGNUM, R15);
+  netbsd_x86_64_supply_gp (AMD64_RIP_REGNUM, RIP);
+  netbsd_x86_64_supply_gp (AMD64_EFLAGS_REGNUM, RFLAGS);
+  netbsd_x86_64_supply_gp (AMD64_CS_REGNUM, CS);
+  netbsd_x86_64_supply_gp (AMD64_SS_REGNUM, SS);
+  netbsd_x86_64_supply_gp (AMD64_DS_REGNUM, DS);
+  netbsd_x86_64_supply_gp (AMD64_ES_REGNUM, ES);
+  netbsd_x86_64_supply_gp (AMD64_FS_REGNUM, FS);
+  netbsd_x86_64_supply_gp (AMD64_GS_REGNUM, GS);
 }
 
+#if 0
 /* Extract the first 16 bits of register REGNUM in the REGCACHE,
    and store these 2 bytes at DEST.
 
@@ -222,11 +177,13 @@ collect_16bit_register (struct regcache *regcache, int regnum, char *dest)
   collect_register (regcache, regnum, word);
   memcpy (dest, word, 2);
 }
+#endif
 
+#if 0
 /* The fill_function for the floating-point register set.  */
 
 static void
-lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
+netbsd_x86_64_fill_fpregset (struct regcache *regcache, char *buf)
 {
   int i;
 
@@ -237,7 +194,7 @@ lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
 		      + i * sizeof (struct ufp387_real));
 
   /* Collect the other FPU registers.  */
-  collect_16bit_register (regcache, I386_FCTRL_REGNUM,
+  collect_16bit_register (regcache, x86_64_FCTRL_REGNUM,
                           buf + offsetof (usr_fcontext_t, ufc_control));
   collect_16bit_register (regcache, I386_FSTAT_REGNUM,
                           buf + offsetof (usr_fcontext_t, ufc_status));
@@ -251,7 +208,7 @@ lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
                     buf + offsetof (usr_fcontext_t, ufc_data_sel));
   collect_register (regcache, I386_FOOFF_REGNUM,
                     buf + offsetof (usr_fcontext_t, ufc_data_off));
-#if !defined(LYNXOS_178)
+#if !defined(netbsdOS_178)
   collect_16bit_register (regcache, I386_FOP_REGNUM,
                           buf + offsetof (usr_fcontext_t, ufc_opcode));
 
@@ -264,7 +221,9 @@ lynx_i386_fill_fpregset (struct regcache *regcache, char *buf)
                     buf + offsetof (usr_fcontext_t, usse_mxcsr));
 #endif
 }
+#endif
 
+#if 0
 /* This is the supply counterpart for collect_16bit_register:
    It extracts a 2byte value from BUF, and uses that value to
    set REGNUM's value in the regcache.
@@ -282,11 +241,13 @@ supply_16bit_register (struct regcache *regcache, int regnum, const char *buf)
   memset (word + 2, 0, 2);
   supply_register (regcache, regnum, word);
 }
+#endif
 
+#if 0
 /* The store_function for the floating-point register set.  */
 
 static void
-lynx_i386_store_fpregset (struct regcache *regcache, const char *buf)
+netbsd_x86_64_store_fpregset (struct regcache *regcache, const char *buf)
 {
   int i;
 
@@ -324,35 +285,99 @@ lynx_i386_store_fpregset (struct regcache *regcache, const char *buf)
                    buf + offsetof (usr_fcontext_t, usse_mxcsr));
 #endif
 }
+#endif
 
-/* Implements the lynx_target_ops.arch_setup routine.  */
+/* Implements the netbsd_target_ops.arch_setup routine.  */
 
 static void
-lynx_i386_arch_setup (void)
+netbsd_x86_64_arch_setup (void)
 {
   struct target_desc *tdesc
-    = i386_create_target_description (X86_XSTATE_SSE_MASK, false, false);
+    = amd64_create_target_description (X86_XSTATE_SSE_MASK, false, false, false);
 
-  init_target_desc (tdesc, i386_expedite_regs);
+  init_target_desc (tdesc, amd64_expedite_regs);
 
-  lynx_tdesc = tdesc;
+  netbsd_tdesc = tdesc;
 }
 
-/* Description of all the x86-lynx register sets.  */
+/* Update all the target description of all processes; a new GDB
+   connected, and it may or not support xml target descriptions.  */
 
-struct lynx_regset_info lynx_target_regsets[] = {
+static void
+x86_64_netbsd_update_xmltarget (void)
+{
+  struct thread_info *saved_thread = current_thread;
+
+  /* Before changing the register cache's internal layout, flush the
+     contents of the current valid caches back to the threads, and
+     release the current regcache objects.  */
+  regcache_release ();
+
+  for_each_process ([] (process_info *proc) {
+    int pid = proc->pid;
+
+    /* Look up any thread of this process.  */
+    current_thread = find_any_thread_of_pid (pid);
+
+    the_low_target.arch_setup ();
+  });
+
+  current_thread = saved_thread;
+}
+
+/* Process qSupported query, "xmlRegisters=". */
+
+static void
+netbsd_x86_64_process_qsupported (char **features, int count)
+{
+  int i;
+
+  /* Return if gdb doesn't support XML.  If gdb sends "xmlRegisters="
+     with "i386" in qSupported query, it supports x86 XML target
+     descriptions.  */
+  use_xml = 0;
+  for (i = 0; i < count; i++)
+    {
+      const char *feature = features[i];
+
+      if (startswith (feature, "xmlRegisters="))
+        {
+          char *copy = xstrdup (feature + 13);
+          char *p;
+
+          for (p = strtok (copy, ","); p != NULL; p = strtok (NULL, ","))
+            {
+              if (strcmp (p, "i386") == 0)
+                {
+                  use_xml = 1;
+                  break;
+                }
+            }
+
+          free (copy);
+        }
+    }
+  x86_64_netbsd_update_xmltarget ();
+}
+
+/* Description of all the x86-netbsd register sets.  */
+
+struct netbsd_regset_info netbsd_target_regsets[] = {
   /* General Purpose Registers.  */
-  {PTRACE_GETREGS, PTRACE_SETREGS, sizeof(usr_econtext_t),
-   lynx_i386_fill_gregset, lynx_i386_store_gregset},
+  {PT_GETREGS, PT_SETREGS, sizeof(struct reg),
+   netbsd_x86_64_fill_gregset, netbsd_x86_64_store_gregset},
   /* Floating Point Registers.  */
+#if 0
   { PTRACE_GETFPREGS, PTRACE_SETFPREGS, sizeof(usr_fcontext_t),
-    lynx_i386_fill_fpregset, lynx_i386_store_fpregset },
+    netbsd_x86_64_fill_fpregset, netbsd_x86_64_store_fpregset },
+#endif
   /* End of list marker.  */
   {0, 0, -1, NULL, NULL }
 };
 
-/* The lynx_target_ops vector for x86-lynx.  */
+/* The netbsd_target_ops vector for x86-netbsd.  */
 
-struct lynx_target_ops the_low_target = {
-  lynx_i386_arch_setup,
+struct netbsd_target_ops the_low_target = {
+  netbsd_x86_64_arch_setup,
+  netbsd_x86_64_process_qsupported,
 };
