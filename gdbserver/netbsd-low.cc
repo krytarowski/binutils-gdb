@@ -544,7 +544,7 @@ netbsd_create_inferior (const char *program,
 		      const std::vector<char *> &program_args)
 {
   pid_t pid;
-  std::string str_program_args = stringify_argv (program_args);
+  std::string str_program_args = construct_inferior_arguments (program_args);
 
   netbsd_debug ("%s(program='%s', args=%s)\n",
                 __func__, program, str_program_args.c_str());
