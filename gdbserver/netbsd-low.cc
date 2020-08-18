@@ -96,7 +96,9 @@ ptrace_request_to_str (int request)
       CASE(PT_DETACH);
       CASE(PT_IO);
       CASE(PT_DUMPCORE);
+#ifdef PT_LWPINFO
       CASE(PT_LWPINFO);
+#endif
       CASE(PT_SYSCALL);
       CASE(PT_SYSCALLEMU);
       CASE(PT_SET_EVENT_MASK);
@@ -518,10 +520,10 @@ repeat:
 static void
 netbsd_add_threads_after_attach (pid_t pid)
 {
-  struct ptrace_lwpinfo pl;
+  struct ptrace_lwpstatus pl;
 
   pl.pl_lwpid = 0;
-  while (netbsd_ptrace(PT_LWPINFO, pid, (void *)&pl, sizeof(pl)) != -1 &&
+  while (netbsd_ptrace(PT_LWPNEXT, pid, (void *)&pl, sizeof(pl)) != -1 &&
     pl.pl_lwpid != 0)
     {
       ptid_t thread_ptid = netbsd_ptid_t (pid, pl.pl_lwpid);
@@ -617,10 +619,10 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
     {
       if (n == 1)
         {
-          struct ptrace_lwpinfo pl;
+          struct ptrace_lwpstatus pl;
           int val;
           pl.pl_lwpid = 0;
-          while ((val = netbsd_ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl,
+          while ((val = netbsd_ptrace(PT_LWPNEXT, ptid.pid(), (void *)&pl,
             sizeof(pl))) != -1 && pl.pl_lwpid != 0)
            {
               if (pl.pl_lwpid == ptid.lwp())
@@ -637,10 +639,10 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
         }
       else
         {
-          struct ptrace_lwpinfo pl;
+          struct ptrace_lwpstatus pl;
           int val;
           pl.pl_lwpid = 0;
-          while ((val = netbsd_ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl,
+          while ((val = netbsd_ptrace(PT_LWPNEXT, ptid.pid(), (void *)&pl,
             sizeof(pl))) != -1 && pl.pl_lwpid != 0)
            {
               netbsd_ptrace (PT_SETSTEP, ptid.pid(), NULL, pl.pl_lwpid);
@@ -650,10 +652,10 @@ netbsd_resume (struct thread_resume *resume_info, size_t n)
     }
   else
     {
-      struct ptrace_lwpinfo pl;
+      struct ptrace_lwpstatus pl;
       int val;
       pl.pl_lwpid = 0;
-      while ((val = netbsd_ptrace(PT_LWPINFO, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
+      while ((val = netbsd_ptrace(PT_LWPNEXT, ptid.pid(), (void *)&pl, sizeof(pl))) != -1 &&
         pl.pl_lwpid != 0)
         {
           netbsd_ptrace (PT_CLEARSTEP, ptid.pid(), NULL, pl.pl_lwpid);
