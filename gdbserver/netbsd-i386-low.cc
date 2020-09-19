@@ -60,22 +60,22 @@ netbsd_i386_fill_gregset (struct regcache *regcache, char *buf)
     collect_register (regcache, regnum, &r->r_##fld);		\
   } while (0)
 
-  netbsd_i386_collect_gp (I386_RAX_REGNUM, eax);
-  netbsd_i386_collect_gp (I386_RBX_REGNUM, ebc);
-  netbsd_i386_collect_gp (I386_RCX_REGNUM, ecx);
-  netbsd_i386_collect_gp (I386_RDX_REGNUM, edx);
-  netbsd_i386_collect_gp (I386_RBP_REGNUM, esp);
-  netbsd_i386_collect_gp (I386_RBP_REGNUM, ebp);
-  netbsd_i386_collect_gp (I386_RBP_REGNUM, esi);
-  netbsd_i386_collect_gp (I386_RBP_REGNUM, edi);
-  netbsd_i386_collect_gp (I386_RBP_REGNUM, eip);
-  netbsd_i386_collect_gp (I386_RBP_REGNUM, eflags);
-  netbsd_i386_collect_gp (I386_RSI_REGNUM, cs);
-  netbsd_i386_collect_gp (I386_RDI_REGNUM, ss);
-  netbsd_i386_collect_gp (I386_RSP_REGNUM, ds);
-  netbsd_i386_collect_gp (I386_RIP_REGNUM, es);
-  netbsd_i386_collect_gp (I386_RIP_REGNUM, fs);
-  netbsd_i386_collect_gp (I386_RIP_REGNUM, gs);
+  netbsd_i386_collect_gp (I386_EAX_REGNUM, eax);
+  netbsd_i386_collect_gp (I386_EBX_REGNUM, ebc);
+  netbsd_i386_collect_gp (I386_ECX_REGNUM, ecx);
+  netbsd_i386_collect_gp (I386_EDX_REGNUM, edx);
+  netbsd_i386_collect_gp (I386_EBP_REGNUM, esp);
+  netbsd_i386_collect_gp (I386_EBP_REGNUM, ebp);
+  netbsd_i386_collect_gp (I386_EBP_REGNUM, esi);
+  netbsd_i386_collect_gp (I386_EBP_REGNUM, edi);
+  netbsd_i386_collect_gp (I386_EBP_REGNUM, eip);
+  netbsd_i386_collect_gp (I386_EBP_REGNUM, eflags);
+  netbsd_i386_collect_gp (I386_ESI_REGNUM, cs);
+  netbsd_i386_collect_gp (I386_EDI_REGNUM, ss);
+  netbsd_i386_collect_gp (I386_ESP_REGNUM, ds);
+  netbsd_i386_collect_gp (I386_EIP_REGNUM, es);
+  netbsd_i386_collect_gp (I386_EIP_REGNUM, fs);
+  netbsd_i386_collect_gp (I386_EIP_REGNUM, gs);
 }
 
 /* The store_function for the general-purpose register set.  */
@@ -86,25 +86,25 @@ netbsd_i386_store_gregset (struct regcache *regcache, const char *buf)
   struct reg *r = (struct reg *) buf;
 
 #define netbsd_i386_supply_gp(regnum, fld) do {		\
-    supply_register (regcache, regnum, &r->regs[_REG_##fld]);	\
+    supply_register (regcache, regnum, &r->r_##fld);	\
   } while(0)
 
-  netbsd_i386_supply_gp (I386_RAX_REGNUM, eax);
-  netbsd_i386_supply_gp (I386_RBX_REGNUM, ebc);
-  netbsd_i386_supply_gp (I386_RCX_REGNUM, ecx);
-  netbsd_i386_supply_gp (I386_RDX_REGNUM, edx);
-  netbsd_i386_supply_gp (I386_RBP_REGNUM, esp);
-  netbsd_i386_supply_gp (I386_RBP_REGNUM, ebp);
-  netbsd_i386_supply_gp (I386_RBP_REGNUM, esi);
-  netbsd_i386_supply_gp (I386_RBP_REGNUM, edi);
-  netbsd_i386_supply_gp (I386_RBP_REGNUM, eip);
-  netbsd_i386_supply_gp (I386_RBP_REGNUM, eflags);
-  netbsd_i386_supply_gp (I386_RSI_REGNUM, cs);
-  netbsd_i386_supply_gp (I386_RDI_REGNUM, ss);
-  netbsd_i386_supply_gp (I386_RSP_REGNUM, ds);
-  netbsd_i386_supply_gp (I386_RIP_REGNUM, es);
-  netbsd_i386_supply_gp (I386_RIP_REGNUM, fs);
-  netbsd_i386_supply_gp (I386_RIP_REGNUM, gs);
+  netbsd_i386_supply_gp (I386_EAX_REGNUM, eax);
+  netbsd_i386_supply_gp (I386_EBX_REGNUM, ebc);
+  netbsd_i386_supply_gp (I386_ECX_REGNUM, ecx);
+  netbsd_i386_supply_gp (I386_EDX_REGNUM, edx);
+  netbsd_i386_supply_gp (I386_EBP_REGNUM, esp);
+  netbsd_i386_supply_gp (I386_EBP_REGNUM, ebp);
+  netbsd_i386_supply_gp (I386_EBP_REGNUM, esi);
+  netbsd_i386_supply_gp (I386_EBP_REGNUM, edi);
+  netbsd_i386_supply_gp (I386_EBP_REGNUM, eip);
+  netbsd_i386_supply_gp (I386_EBP_REGNUM, eflags);
+  netbsd_i386_supply_gp (I386_ESI_REGNUM, cs);
+  netbsd_i386_supply_gp (I386_EDI_REGNUM, ss);
+  netbsd_i386_supply_gp (I386_ESP_REGNUM, ds);
+  netbsd_i386_supply_gp (I386_EIP_REGNUM, es);
+  netbsd_i386_supply_gp (I386_EIP_REGNUM, fs);
+  netbsd_i386_supply_gp (I386_EIP_REGNUM, gs);
 }
 
 /* Description of all the x86-netbsd register sets.  */
