@@ -114,6 +114,8 @@ netbsd_process_target::post_create_inferior ()
 {
   pid_t pid = current_process ()->pid;
   netbsd_nat::enable_proc_events (pid);
+
+  low_arch_setup ();
 }
 
 /* Implement the attach target_ops method.  */
@@ -502,7 +504,7 @@ netbsd_process_target::thread_alive (ptid_t ptid)
 void
 netbsd_process_target::fetch_registers (struct regcache *regcache, int regno)
 {
-  struct netbsd_regset_info *regset = netbsd_target_regsets;
+  const netbsd_regset_info *regset = get_regs_info();
   ptid_t inferior_ptid = ptid_of (current_thread);
 
   while (regset->size >= 0)
@@ -523,7 +525,7 @@ netbsd_process_target::fetch_registers (struct regcache *regcache, int regno)
 void
 netbsd_process_target::store_registers (struct regcache *regcache, int regno)
 {
-  struct netbsd_regset_info *regset = netbsd_target_regsets;
+  const netbsd_regset_info *regset = get_regs_info();
   ptid_t inferior_ptid = ptid_of (current_thread);
 
   while (regset->size >= 0)
@@ -975,9 +977,9 @@ get_r_debug (netbsd_process_target *target, const int pid)
 
 /* Read one pointer from MEMADDR in the inferior.  */
 
-static int
-read_one_ptr (netbsd_process_target *target, CORE_ADDR memaddr, CORE_ADDR *ptr,
-	      int ptr_size)
+int
+netbsd_process_target::read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr,
+				     int ptr_size)
 {
   /* Go through a union so this works on either big or little endian
      hosts, when the inferior's pointer size is smaller than the size
@@ -991,7 +993,7 @@ read_one_ptr (netbsd_process_target *target, CORE_ADDR memaddr, CORE_ADDR *ptr,
     unsigned char uc;
   } addr;
 
-  int ret = target->read_memory (memaddr, &addr.uc, ptr_size);
+  int ret = read_memory (memaddr, &addr.uc, ptr_size);
   if (ret == 0)
     {
       if (ptr_size == sizeof (CORE_ADDR))
@@ -1106,7 +1108,7 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
       if (r_debug != 0)
 	{
 	  CORE_ADDR map_offset = r_debug + lmo->r_map_offset;
-	  if (read_one_ptr (target, map_offset, &lm_addr, ptr_size) != 0)
+	  if (target->read_one_ptr (map_offset, &lm_addr, ptr_size) != 0)
 	    warning ("unable to read r_map from %s",
 		     core_addr_to_string (map_offset));
 	}
@@ -1115,15 +1117,15 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
   std::string document = "<library-list-svr4 version=\"1.0\"";
 
   while (lm_addr
-	 && read_one_ptr (target, lm_addr + lmo->l_name_offset,
+	 && target->read_one_ptr (lm_addr + lmo->l_name_offset,
 			  &l_name, ptr_size) == 0
-	 && read_one_ptr (target, lm_addr + lmo->l_addr_offset,
+	 && target->read_one_ptr (lm_addr + lmo->l_addr_offset,
 			  &l_addr, ptr_size) == 0
-	 && read_one_ptr (target, lm_addr + lmo->l_ld_offset,
+	 && target->read_one_ptr (lm_addr + lmo->l_ld_offset,
 			  &l_ld, ptr_size) == 0
-	 && read_one_ptr (target, lm_addr + lmo->l_prev_offset,
+	 && target->read_one_ptr (lm_addr + lmo->l_prev_offset,
 			  &l_prev, ptr_size) == 0
-	 && read_one_ptr (target, lm_addr + lmo->l_next_offset,
+	 && target->read_one_ptr (lm_addr + lmo->l_next_offset,
 			  &l_next, ptr_size) == 0)
     {
       if (lm_prev != l_prev)
@@ -1315,13 +1317,8 @@ netbsd_process_target::supports_read_auxv ()
   return true;
 }
 
-/* The NetBSD target ops object.  */
-
-static netbsd_process_target the_netbsd_target;
-
 void
 initialize_low ()
 {
-  set_target_ops (&the_netbsd_target);
-  the_low_target.arch_setup ();
+  set_target_ops (the_netbsd_target);
 }
