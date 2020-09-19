@@ -22,7 +22,7 @@
 #include "server.h"
 #include "netbsd-low.h"
 #include "gdbsupport/x86-xstate.h"
-#include "arch/amd64.h"
+#include "arch/i386.h"
 #include "x86-tdesc.h"
 #include "tdesc.h"
 
@@ -61,7 +61,7 @@ netbsd_i386_fill_gregset (struct regcache *regcache, char *buf)
   } while (0)
 
   netbsd_i386_collect_gp (I386_EAX_REGNUM, eax);
-  netbsd_i386_collect_gp (I386_EBX_REGNUM, ebc);
+  netbsd_i386_collect_gp (I386_EBX_REGNUM, ebx);
   netbsd_i386_collect_gp (I386_ECX_REGNUM, ecx);
   netbsd_i386_collect_gp (I386_EDX_REGNUM, edx);
   netbsd_i386_collect_gp (I386_EBP_REGNUM, esp);
@@ -90,7 +90,7 @@ netbsd_i386_store_gregset (struct regcache *regcache, const char *buf)
   } while(0)
 
   netbsd_i386_supply_gp (I386_EAX_REGNUM, eax);
-  netbsd_i386_supply_gp (I386_EBX_REGNUM, ebc);
+  netbsd_i386_supply_gp (I386_EBX_REGNUM, ebx);
   netbsd_i386_supply_gp (I386_ECX_REGNUM, ecx);
   netbsd_i386_supply_gp (I386_EDX_REGNUM, edx);
   netbsd_i386_supply_gp (I386_EBP_REGNUM, esp);
@@ -141,7 +141,7 @@ void
 netbsd_i386_target::low_arch_setup ()
 {
   target_desc *tdesc
-    = i386_create_target_description (X86_XSTATE_SSE_MASK, false, false, false);
+    = i386_create_target_description (X86_XSTATE_SSE_MASK, false, false);
 
   init_target_desc (tdesc, i386_expedite_regs);
 
