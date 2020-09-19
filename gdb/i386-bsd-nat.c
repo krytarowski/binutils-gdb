@@ -362,15 +362,15 @@ _initialize_i386bsd_nat ()
     int     sc_gs;
     int     sc_fs;
     int     sc_es;
-    int     sc_ds;   
+    int     sc_ds;
     int     sc_edi;
     int     sc_esi;
     int     sc_ebp;
-    int     sc_ebx; 
+    int     sc_ebx;
     int     sc_edx;
-    int     sc_ecx;  
+    int     sc_ecx;
     int     sc_eax;
-    /* XXX */   
+    /* XXX */
     int     sc_eip;
     int     sc_cs;
     int     sc_eflags;
