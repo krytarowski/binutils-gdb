@@ -187,8 +187,6 @@ protected:
 
   CORE_ADDR get_r_debug (const pid_t pid);
 
-  std::string getexecname(pid_t pid);
-
   /* **************************************************************************/
   
   /* The architecture-specific "low" methods are listed below.  */
