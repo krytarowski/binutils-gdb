@@ -31,6 +31,7 @@
 #include <signal.h>
 
 #include <elf.h>
+#include <link.h>
 
 #include <type_traits>
 
@@ -48,44 +49,12 @@ const struct target_desc *netbsd_tdesc;
 /* Call add_process with the given parameters, and initialize
    the process' private data.  */
 
-static void
-netbsd_add_process (int pid, int attached)
+void
+netbsd_process_target::netbsd_add_process (int pid, int attached)
 {
   struct process_info *proc = add_process (pid, attached);
   proc->tdesc = netbsd_tdesc;
   proc->priv = nullptr;
-}
-
-/* Callback used by fork_inferior to start tracing the inferior.  */
-
-static void
-netbsd_ptrace_fun ()
-{
-  /* Switch child to its own process group so that signals won't
-     directly affect GDBserver. */
-  if (setpgid (0, 0) < 0)
-    trace_start_error_with_name (("setpgid"));
-
-  if (ptrace (PT_TRACE_ME, 0, nullptr, 0) < 0)
-    trace_start_error_with_name (("ptrace"));
-
-  /* If GDBserver is connected to gdb via stdio, redirect the inferior's
-     stdout to stderr so that inferior i/o doesn't corrupt the connection.
-     Also, redirect stdin to /dev/null.  */
-  if (remote_connection_is_stdio ())
-    {
-      if (close (0) < 0)
-	trace_start_error_with_name (("close"));
-      if (open ("/dev/null", O_RDONLY) < 0)
-	trace_start_error_with_name (("open"));
-      if (dup2 (2, 1) < 0)
-	trace_start_error_with_name (("dup2"));
-      if (write (2, "stdin/stdout redirected\n",
-		 sizeof ("stdin/stdout redirected\n") - 1) < 0)
-	{
-	  /* Errors ignored.  */
-	}
-    }
 }
 
 /* Implement the create_inferior method of the target_ops vector.  */
@@ -96,8 +65,39 @@ netbsd_process_target::create_inferior (const char *program,
 {
   std::string str_program_args = construct_inferior_arguments (program_args);
 
+  /* Callback used by fork_inferior to start tracing the inferior.  */
+  auto fn
+    = [] ()
+      {
+	/* Switch child to its own process group so that signals won't
+	   directly affect GDBserver. */
+	if (setpgid (0, 0) < 0)
+	  trace_start_error_with_name (("setpgid"));
+
+	if (ptrace (PT_TRACE_ME, 0, nullptr, 0) < 0)
+	  trace_start_error_with_name (("ptrace"));
+
+	/* If GDBserver is connected to gdb via stdio, redirect the inferior's
+	   stdout to stderr so that inferior i/o doesn't corrupt the connection.
+	   Also, redirect stdin to /dev/null.  */
+	if (remote_connection_is_stdio ())
+	  {
+	    if (close (0) < 0)
+	      trace_start_error_with_name (("close"));
+	    if (open ("/dev/null", O_RDONLY) < 0)
+	      trace_start_error_with_name (("open"));
+	    if (dup2 (2, 1) < 0)
+	      trace_start_error_with_name (("dup2"));
+	    if (write (2, "stdin/stdout redirected\n",
+		       sizeof ("stdin/stdout redirected\n") - 1) < 0)
+	      {
+		/* Errors ignored.  */
+	      }
+	  }
+      };
+
   pid_t pid = fork_inferior (program, str_program_args.c_str (),
-			     get_environ ()->envp (), netbsd_ptrace_fun,
+			     get_environ ()->envp (), fn,
 			     nullptr, nullptr, nullptr, nullptr);
 
   netbsd_add_process (pid, 0);
@@ -129,8 +129,8 @@ netbsd_process_target::attach (unsigned long pid)
 
 /* Returns true if GDB is interested in any child syscalls.  */
 
-static bool
-gdb_catching_syscalls_p (pid_t pid)
+bool
+netbsd_process_target::gdb_catching_syscalls_p (pid_t pid)
 {
   struct process_info *proc = find_process_pid (pid);
   return !proc->syscalls_to_catch.empty ();
@@ -193,8 +193,8 @@ netbsd_process_target::resume (struct thread_resume *resume_info, size_t n)
 
 /* Returns true if GDB is interested in the reported SYSNO syscall.  */
 
-static bool
-netbsd_catch_this_syscall (int sysno)
+bool
+netbsd_process_target::netbsd_catch_this_syscall (int sysno)
 {
   struct process_info *proc = current_process ();
 
@@ -215,8 +215,8 @@ netbsd_catch_this_syscall (int sysno)
    HOSTSTATUS is the waitstatus from wait() or the equivalent; store our
    translation of that in OURSTATUS.  */
 
-static void
-netbsd_store_waitstatus (struct target_waitstatus *ourstatus, int hoststatus)
+void
+netbsd_process_target::netbsd_store_waitstatus (struct target_waitstatus *ourstatus, int hoststatus)
 {
   if (WIFEXITED (hoststatus))
     {
@@ -237,8 +237,8 @@ netbsd_store_waitstatus (struct target_waitstatus *ourstatus, int hoststatus)
 
 /* Implement a safe wrapper around waitpid().  */
 
-static pid_t
-netbsd_waitpid (ptid_t ptid, struct target_waitstatus *ourstatus, int options)
+pid_t
+netbsd_process_target::netbsd_waitpid (ptid_t ptid, struct target_waitstatus *ourstatus, int options)
 {
   int status;
 
@@ -259,8 +259,8 @@ netbsd_waitpid (ptid_t ptid, struct target_waitstatus *ourstatus, int options)
    process ID of the child, or MINUS_ONE_PTID in case of error; store
    the status in *OURSTATUS.  */
 
-static ptid_t
-netbsd_wait (ptid_t ptid, struct target_waitstatus *ourstatus,
+ptid_t
+netbsd_process_target::netbsd_wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 	     int target_options)
 {
   pid_t pid = netbsd_waitpid (ptid, ourstatus, target_options);
@@ -639,8 +639,8 @@ netbsd_process_target::request_interrupt ()
    with the PIOD_READ_AUXV operation and using the PT_IO standard input
    and output arguments.  */
 
-static size_t
-netbsd_read_auxv(pid_t pid, void *offs, void *addr, size_t len)
+size_t
+netbsd_process_target::netbsd_read_auxv(pid_t pid, void *offs, void *addr, size_t len)
 {
   struct ptrace_io_desc pio;
 
@@ -816,15 +816,13 @@ netbsd_process_target::supports_disable_randomization ()
 }
 
 /* Extract &phdr and num_phdr in the inferior.  Return 0 on success.  */
-
-template <typename T>
-int get_phdr_phnum_from_proc_auxv (const pid_t pid,
-				   CORE_ADDR *phdr_memaddr, int *num_phdr)
+int
+netbsd_process_target::get_phdr_phnum_from_proc_auxv (const pid_t pid,
+						      CORE_ADDR *phdr_memaddr,
+						      int *num_phdr)
 {
-  typedef typename std::conditional<sizeof(T) == sizeof(int64_t),
-				    Aux64Info, Aux32Info>::type auxv_type;
-  const size_t auxv_size = sizeof (auxv_type);
-  const size_t auxv_buf_size = 128 * sizeof (auxv_type);
+  const size_t auxv_size = sizeof (AuxInfo);
+  const size_t auxv_buf_size = 128 * sizeof (AuxInfo);
 
   std::vector<char> auxv_buf;
   auxv_buf.resize (auxv_buf_size);
@@ -838,7 +836,7 @@ int get_phdr_phnum_from_proc_auxv (const pid_t pid,
        buf < (auxv_buf.data () + auxv_buf_size);
        buf += auxv_size)
     {
-      auxv_type *const aux = (auxv_type *) buf;
+      AuxInfo *const aux = (AuxInfo *) buf;
 
       switch (aux->a_type)
 	{
@@ -867,23 +865,20 @@ int get_phdr_phnum_from_proc_auxv (const pid_t pid,
 
 /* Return &_DYNAMIC (via PT_DYNAMIC) in the inferior, or 0 if not present.  */
 
-template <typename T>
-static CORE_ADDR
-get_dynamic (netbsd_process_target *target, const pid_t pid)
+CORE_ADDR
+netbsd_process_target::get_dynamic (const pid_t pid)
 {
-  typedef typename std::conditional<sizeof(T) == sizeof(int64_t),
-				    Elf64_Phdr, Elf32_Phdr>::type phdr_type;
-  const int phdr_size = sizeof (phdr_type);
+  const int phdr_size = sizeof (Elf_Phdr);
 
   CORE_ADDR phdr_memaddr;
   int num_phdr;
-  if (get_phdr_phnum_from_proc_auxv<T> (pid, &phdr_memaddr, &num_phdr))
+  if (get_phdr_phnum_from_proc_auxv (pid, &phdr_memaddr, &num_phdr))
     return 0;
 
   std::vector<unsigned char> phdr_buf;
   phdr_buf.resize (num_phdr * phdr_size);
 
-  if (target->read_memory (phdr_memaddr, phdr_buf.data (), phdr_buf.size ()))
+  if (read_memory (phdr_memaddr, phdr_buf.data (), phdr_buf.size ()))
     return 0;
 
   /* Compute relocation: it is expected to be 0 for "regular" executables,
@@ -891,7 +886,7 @@ get_dynamic (netbsd_process_target *target, const pid_t pid)
   CORE_ADDR relocation = -1;
   for (int i = 0; relocation == -1 && i < num_phdr; i++)
     {
-      phdr_type *const p = (phdr_type *) (phdr_buf.data() + i * phdr_size);
+      Elf_Phdr *const p = (Elf_Phdr *) (phdr_buf.data() + i * phdr_size);
 
       if (p->p_type == PT_PHDR)
 	relocation = phdr_memaddr - p->p_vaddr;
@@ -914,7 +909,7 @@ get_dynamic (netbsd_process_target *target, const pid_t pid)
 
   for (int i = 0; i < num_phdr; i++)
     {
-      phdr_type *const p = (phdr_type *) (phdr_buf.data () + i * phdr_size);
+      Elf_Phdr *const p = (Elf_Phdr *) (phdr_buf.data () + i * phdr_size);
 
       if (p->p_type == PT_DYNAMIC)
 	return p->p_vaddr + relocation;
@@ -928,23 +923,20 @@ get_dynamic (netbsd_process_target *target, const pid_t pid)
    We look for DT_MIPS_RLD_MAP first.  MIPS executables use this instead of
    DT_DEBUG, although they sometimes contain an unused DT_DEBUG entry too.  */
 
-template <typename T>
-static CORE_ADDR
-get_r_debug (netbsd_process_target *target, const int pid)
+CORE_ADDR
+netbsd_process_target::get_r_debug (const pid_t pid)
 {
-  typedef typename std::conditional<sizeof(T) == sizeof(int64_t),
-				    Elf64_Dyn, Elf32_Dyn>::type dyn_type;
-  const int dyn_size = sizeof (dyn_type);
-  unsigned char buf[sizeof (dyn_type)];  /* The larger of the two.  */
+  const int dyn_size = sizeof (Elf_Dyn);
+  unsigned char buf[sizeof (Elf_Dyn)];  /* The larger of the two.  */
   CORE_ADDR map = -1;
 
-  CORE_ADDR dynamic_memaddr = get_dynamic<T> (target, pid);
+  CORE_ADDR dynamic_memaddr = get_dynamic (pid);
   if (dynamic_memaddr == 0)
     return map;
 
-  while (target->read_memory (dynamic_memaddr, buf, dyn_size) == 0)
+  while (read_memory (dynamic_memaddr, buf, dyn_size) == 0)
     {
-      dyn_type *const dyn = (dyn_type *) buf;
+      Elf_Dyn *const dyn = (Elf_Dyn *) buf;
 #if defined DT_MIPS_RLD_MAP
       union
       {
@@ -1008,14 +1000,20 @@ netbsd_process_target::read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr,
 
 /* Construct qXfer:libraries-svr4:read reply.  */
 
-template <typename T>
 int
-netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
-			     const pid_t pid, const char *annex,
-			     unsigned char *readbuf,
-			     unsigned const char *writebuf,
-			     CORE_ADDR offset, int len)
+netbsd_process_target::qxfer_libraries_svr4 (const char *annex,
+					     unsigned char *readbuf,
+					     unsigned const char *writebuf,
+					     CORE_ADDR offset, int len)
 {
+  if (writebuf != nullptr)
+    return -2;
+  if (readbuf == nullptr)
+    return -1;
+
+  struct process_info *proc = current_process ();
+  pid_t pid = proc->pid;
+
   struct link_map_offsets
   {
     /* Offset and size of r_debug.r_version.  */
@@ -1040,36 +1038,23 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
     int l_prev_offset;
   };
 
-  static const struct link_map_offsets lmo_32bit_offsets =
+  static const struct link_map_offsets lmo_offsets =
     {
-      0,     /* r_version offset. */
-      4,     /* r_debug.r_map offset.  */
-      0,     /* l_addr offset in link_map.  */
-      4,     /* l_name offset in link_map.  */
-      8,     /* l_ld offset in link_map.  */
-      12,    /* l_next offset in link_map.  */
-      16     /* l_prev offset in link_map.  */
-    };
-
-  static const struct link_map_offsets lmo_64bit_offsets =
-    {
-      0,     /* r_version offset. */
-      8,     /* r_debug.r_map offset.  */
-      0,     /* l_addr offset in link_map.  */
-      8,     /* l_name offset in link_map.  */
-      16,    /* l_ld offset in link_map.  */
-      24,    /* l_next offset in link_map.  */
-      32     /* l_prev offset in link_map.  */
+     offsetof (struct r_debug, r_version),
+     offsetof (struct r_debug, r_map),
+     offsetof (struct link_map, l_addr),
+     offsetof (struct link_map, l_name),
+     offsetof (struct link_map, l_ld),
+     offsetof (struct link_map, l_next),
+     offsetof (struct link_map, l_prev)
     };
 
   CORE_ADDR lm_addr = 0, lm_prev = 0;
   CORE_ADDR l_name, l_addr, l_ld, l_next, l_prev;
   int header_done = 0;
 
-  const struct link_map_offsets *lmo
-    = ((sizeof (T) == sizeof (int64_t))
-       ? &lmo_64bit_offsets : &lmo_32bit_offsets);
-  int ptr_size = sizeof (T);
+  const struct link_map_offsets *lmo = &lmo_offsets;
+  int ptr_size = sizeof (void *);
 
   while (annex[0] != '\0')
     {
@@ -1097,7 +1082,7 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
 
   if (lm_addr == 0)
     {
-      CORE_ADDR r_debug = get_r_debug<T> (target, pid);
+      CORE_ADDR r_debug = get_r_debug (pid);
 
       /* We failed to find DT_DEBUG.  Such situation will not change
 	 for this inferior - do not retry it.  Report it to GDB as
@@ -1108,7 +1093,7 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
       if (r_debug != 0)
 	{
 	  CORE_ADDR map_offset = r_debug + lmo->r_map_offset;
-	  if (target->read_one_ptr (map_offset, &lm_addr, ptr_size) != 0)
+	  if (read_one_ptr (map_offset, &lm_addr, ptr_size) != 0)
 	    warning ("unable to read r_map from %s",
 		     core_addr_to_string (map_offset));
 	}
@@ -1117,15 +1102,15 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
   std::string document = "<library-list-svr4 version=\"1.0\"";
 
   while (lm_addr
-	 && target->read_one_ptr (lm_addr + lmo->l_name_offset,
+	 && read_one_ptr (lm_addr + lmo->l_name_offset,
 			  &l_name, ptr_size) == 0
-	 && target->read_one_ptr (lm_addr + lmo->l_addr_offset,
+	 && read_one_ptr (lm_addr + lmo->l_addr_offset,
 			  &l_addr, ptr_size) == 0
-	 && target->read_one_ptr (lm_addr + lmo->l_ld_offset,
+	 && read_one_ptr (lm_addr + lmo->l_ld_offset,
 			  &l_ld, ptr_size) == 0
-	 && target->read_one_ptr (lm_addr + lmo->l_prev_offset,
+	 && read_one_ptr (lm_addr + lmo->l_prev_offset,
 			  &l_prev, ptr_size) == 0
-	 && target->read_one_ptr (lm_addr + lmo->l_next_offset,
+	 && read_one_ptr (lm_addr + lmo->l_next_offset,
 			  &l_next, ptr_size) == 0)
     {
       if (lm_prev != l_prev)
@@ -1151,7 +1136,7 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
 	  /* Not checking for error because reading may stop before
 	     we've got PATH_MAX worth of characters.  */
 	  libname[0] = '\0';
-	  target->read_memory (l_name, libname, sizeof (libname) - 1);
+	  read_memory (l_name, libname, sizeof (libname) - 1);
 	  libname[sizeof (libname) - 1] = '\0';
 	  if (libname[0] != '\0')
 	    {
@@ -1224,30 +1209,6 @@ netbsd_process_target::elf_64_file_p (const char *file)
   return header.e_ident[EI_CLASS] == ELFCLASS64;
 }
 
-/* Construct qXfer:libraries-svr4:read reply.  */
-
-int
-netbsd_process_target::qxfer_libraries_svr4 (const char *annex,
-					     unsigned char *readbuf,
-					     unsigned const char *writebuf,
-					     CORE_ADDR offset, int len)
-{
-  if (writebuf != nullptr)
-    return -2;
-  if (readbuf == nullptr)
-    return -1;
-
-  struct process_info *proc = current_process ();
-  pid_t pid = proc->pid;
-  bool is_elf64 = elf_64_file_p (netbsd_nat::pid_to_exec_file (pid));
-
-  if (is_elf64)
-    return netbsd_qxfer_libraries_svr4<int64_t> (this, pid, annex, readbuf,
-						 writebuf, offset, len);
-  else
-    return netbsd_qxfer_libraries_svr4<int32_t> (this, pid, annex, readbuf,
-						 writebuf, offset, len);
-}
 
 /* Implement the supports_qxfer_libraries_svr4 target_ops method.  */
 

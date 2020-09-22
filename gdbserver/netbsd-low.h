@@ -127,10 +127,15 @@ public:
 
   bool supports_catch_syscall () override;
 
-  /* Return the information to access registers.  This has public
-     visibility because proc-service uses it.  */
-  virtual const netbsd_regset_info *get_regs_info () = 0;
+protected:
 
+  /* Call add_process with the given parameters, and initialize
+     the process' private data.  */
+  void netbsd_add_process (int pid, int attached);
+
+  /* Callback used by fork_inferior to start tracing the inferior.  */
+  void netbsd_ptrace_fun ();
+  
   /* Read one pointer from MEMADDR in the inferior.  */
 
   int read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr, int ptr_size);
@@ -140,8 +145,56 @@ public:
      and error if the file is not accessible or doesn't exist.  */
   bool elf_64_file_p (const char *file);
 
+  /* Returns true if GDB is interested in any child syscalls.  */
+  bool gdb_catching_syscalls_p (pid_t pid);
+
+  /* Returns true if GDB is interested in the reported SYSNO syscall.  */
+  bool netbsd_catch_this_syscall (int sysno);
+
+  /* Helper function for child_wait and the derivatives of child_wait.                                                                              
+   HOSTSTATUS is the waitstatus from wait() or the equivalent; store our                                                                          
+   translation of that in OURSTATUS.  */
+  void netbsd_store_waitstatus (struct target_waitstatus *ourstatus, int hoststatus);
+
+  /* Implement a safe wrapper around waitpid().  */
+  pid_t netbsd_waitpid (ptid_t ptid, struct target_waitstatus *ourstatus, int options);
+
+  /* Implement the wait target_ops method.                                                                                                          
+     
+     Wait for the child specified by PTID to do something.  Return the                                                                              
+     process ID of the child, or MINUS_ONE_PTID in case of error; store                                                                             
+     the status in *OURSTATUS.  */
+  ptid_t netbsd_wait (ptid_t ptid, struct target_waitstatus *ourstatus,
+		      int target_options);
+  
+  /* Read the AUX Vector for the specified PID, wrapping the ptrace(2) call                                                                         
+     with the PIOD_READ_AUXV operation and using the PT_IO standard input                                                                           
+     and output arguments.  */
+  size_t netbsd_read_auxv(pid_t pid, void *offs, void *addr, size_t len);
+
+  /* Extract &phdr and num_phdr in the inferior.  Return 0 on success.  */
+  int get_phdr_phnum_from_proc_auxv (const pid_t pid,
+				     CORE_ADDR *phdr_memaddr,
+				     int *num_phdr);
+
+  /* Return &_DYNAMIC (via PT_DYNAMIC) in the inferior, or 0 if not present.  */
+  CORE_ADDR get_dynamic (const pid_t pid);
+
+  /* Return &_r_debug in the inferior, or -1 if not present.  Return value                                                                          
+     can be 0 if the inferior does not yet have the library list initialized.                                                                       
+     We look for DT_MIPS_RLD_MAP first.  MIPS executables use this instead of                                                                       
+     DT_DEBUG, although they sometimes contain an unused DT_DEBUG entry too.  */
+
+  CORE_ADDR get_r_debug (const pid_t pid);
+
+  /* **************************************************************************/
+  
   /* The architecture-specific "low" methods are listed below.  */
 
+  /* Return the information to access registers.  This has public
+     visibility because proc-service uses it.  */
+  virtual const netbsd_regset_info *get_regs_info () = 0;
+    
   /* Architecture-specific setup for the current thread.  */
   virtual void low_arch_setup () = 0;
 };
