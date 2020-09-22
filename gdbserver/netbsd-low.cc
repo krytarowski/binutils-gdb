@@ -57,6 +57,21 @@ netbsd_process_target::netbsd_add_process (int pid, int attached)
   proc->priv = nullptr;
 }
 
+std::string
+netbsd_process_target::getexecname(pid_t pid)
+{
+  char buf[PATH_MAX];
+  size_t size = sizeof (buf);
+  int mib[4] = {CTL_KERN, KERN_PROC_ARGS, pid, KERN_PROC_PATHNAME};
+
+  if (sysctl (mib, 4, buf, &size, nullptr, 0) == -1)
+    error (("sysctl"));
+
+  buf [sizeof(buf) - 1] = '\0';
+
+  return buf;
+}
+
 /* Implement the create_inferior method of the target_ops vector.  */
 
 int
@@ -64,6 +79,10 @@ netbsd_process_target::create_inferior (const char *program,
 					const std::vector<char *> &program_args)
 {
   std::string str_program_args = construct_inferior_arguments (program_args);
+
+  std::string myname = getexecname (getpid ());
+  if (elf_64_file_p (program) != elf_64_file_p (myname.c_str ()))
+      error (("Multilib is unsupported on this target."));
 
   /* Callback used by fork_inferior to start tracing the inferior.  */
   auto fn
