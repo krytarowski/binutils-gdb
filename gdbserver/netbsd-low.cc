@@ -1200,8 +1200,8 @@ netbsd_qxfer_libraries_svr4 (netbsd_process_target *target,
    false if the file is not a 64-bit ELF file,
    and error if the file is not accessible or doesn't exist.  */
 
-static bool
-elf_64_file_p (const char *file)
+bool
+netbsd_process_target::elf_64_file_p (const char *file)
 {
   int fd = gdb::handle_eintr<int> (-1, ::open, file, O_RDONLY);
   if (fd < 0)

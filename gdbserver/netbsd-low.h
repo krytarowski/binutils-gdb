@@ -135,6 +135,11 @@ public:
 
   int read_one_ptr (CORE_ADDR memaddr, CORE_ADDR *ptr, int ptr_size);
 
+  /* Return true if FILE is a 64-bit ELF file,
+     false if the file is not a 64-bit ELF file,
+     and error if the file is not accessible or doesn't exist.  */
+  bool elf_64_file_p (const char *file);
+
   /* The architecture-specific "low" methods are listed below.  */
 
   /* Architecture-specific setup for the current thread.  */
