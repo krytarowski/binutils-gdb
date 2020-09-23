@@ -23,6 +23,7 @@
 #include "target.h"
 
 #include "i386-tdep.h"
+#include "x86-bsd-nat.h"
 #include "i386-bsd-nat.h"
 
 /* Support for debugging kernel virtual memory images.  */
